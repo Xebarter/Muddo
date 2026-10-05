@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, CreditCard, Smartphone, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { CheckCircle2, Smartphone, X } from 'lucide-react'
 import { useProfile } from '@/components/account/profile-context'
 import { StatusBadge } from '@/components/site/design-system'
-import { recordPaymentAttempt } from '@/lib/actions'
+import { refreshMobileMoneyPayment, startMobileMoneyPayment } from '@/lib/actions'
 import { installments as demoInstallments, paymentSummary as demoSummary, service as demoService } from '@/lib/account'
 
 const storageKey = 'muddo-account-payment'
@@ -24,12 +25,6 @@ export type PlanInstallment = {
 
 const fallbackRows: PlanInstallment[] = demoInstallments.map((item) => ({ ...item, id: item.reference }))
 
-const methods = [
-  { id: 'mtn', label: 'MTN Mobile Money', detail: 'A prompt is sent to your MTN line.', kind: 'mobile' as const },
-  { id: 'airtel', label: 'Airtel Money', detail: 'A prompt is sent to your Airtel line.', kind: 'mobile' as const },
-  { id: 'card', label: 'Visa or Mastercard', detail: 'Card details stay with the provider.', kind: 'card' as const },
-]
-
 type PendingPayment = { reference: string; method: string; note: string; phone: string }
 
 export function PaymentPlan({
@@ -41,11 +36,12 @@ export function PaymentPlan({
   summary?: typeof demoSummary
   activeService?: { title: string; reference: string }
 }) {
-  const dueInstallment = rows.find((item) => item.status === 'Due soon' || item.status === 'Due')
+  const dueInstallment = rows.find((item) => item.status === 'Due soon' || item.status === 'Due' || item.status === 'Pending')
   const [receiptReference, setReceiptReference] = useState<string | null>(null)
   const [paying, setPaying] = useState(false)
   const [pending, setPending] = useState<PendingPayment | null>(null)
   const payButtonRef = useRef<HTMLButtonElement>(null)
+  const awaitingConfirmation = dueInstallment?.status === 'Pending' || Boolean(pending)
 
   useEffect(() => {
     try {
@@ -74,27 +70,25 @@ export function PaymentPlan({
   return (
     <>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Metric label="Received" value={summary.paid} note={`${rows.filter((item) => item.status === 'Paid').length} installments settled`} />
-        <Metric label="Outstanding" value={summary.outstanding} note={pending ? 'Awaiting confirmation' : dueInstallment ? `Due ${dueInstallment.due}` : 'Nothing outstanding'} />
-        <Metric label="Contract value" value={summary.total} note={activeService.reference || 'No active service'} />
+        <Metric label="Received" value={summary.paid} note={`${rows.filter((item) => item.status === 'Paid').length} paid`} />
+        <Metric label="Outstanding" value={summary.outstanding} note={awaitingConfirmation ? 'Waiting' : dueInstallment ? `Due ${dueInstallment.due}` : 'Clear'} />
+        <Metric label="Total" value={summary.total} note={activeService.reference || 'None'} />
       </div>
 
       {dueInstallment && (
         <section className="mt-8 border border-brand-line bg-brand-ink p-6 text-white md:p-8">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-gold-light">{pending ? 'Awaiting confirmation' : 'Next payment'}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-gold-light">{awaitingConfirmation ? 'Waiting' : 'Next'}</p>
               <p className="mt-3 font-serif text-4xl tracking-[-0.04em] md:text-5xl">{dueInstallment.amount}</p>
               <p className="mt-3 max-w-xl text-sm leading-6 text-white/65">
-                {pending
-                  ? `${pending.method} is recorded against ${pending.reference}. ${pending.note} The balance changes after the provider confirms it.`
-                  : `${dueInstallment.name} for ${activeService.title}. Due ${dueInstallment.due}.`}
+                {awaitingConfirmation ? 'Approve the prompt on your phone.' : `${dueInstallment.name}. Due ${dueInstallment.due}.`}
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 lg:items-end">
-              <span className="inline-flex items-center gap-2 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-gold-light"><span className="size-1.5 rounded-full bg-current" />{pending ? 'Processing' : dueInstallment.status}</span>
-              {pending ? (
-                <p className="text-xs text-white/50">{pending.reference}</p>
+              <span className="inline-flex items-center gap-2 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-gold-light"><span className="size-1.5 rounded-full bg-current" />{awaitingConfirmation ? 'Processing' : dueInstallment.status}</span>
+              {awaitingConfirmation ? (
+                <p className="text-xs text-white/50">{pending?.reference || dueInstallment.reference}</p>
               ) : (
                 <button ref={payButtonRef} type="button" onClick={() => setPaying(true)} className="inline-flex h-12 items-center justify-center bg-brand-gold px-5 text-xs font-bold uppercase tracking-[0.12em] text-brand-ink hover:bg-brand-gold-light">
                   Pay {dueInstallment.amount}
@@ -105,7 +99,7 @@ export function PaymentPlan({
           <div className="mt-8 h-1.5 bg-white/10">
             <div className="h-full bg-brand-gold" style={{ width: summary.paidWidth }} />
           </div>
-          <p className="mt-3 text-xs text-white/45">{summary.paid} received of {summary.total}</p>
+          <p className="mt-3 text-xs text-white/45">{summary.paid} of {summary.total}</p>
         </section>
       )}
 
@@ -149,7 +143,7 @@ export function PaymentPlan({
                     </button>
                   ) : processing ? null : (
                     <button type="button" onClick={() => setPaying(true)} className="text-[10px] font-bold uppercase tracking-wider text-brand-ink hover:text-brand-gold-deep">
-                      Pay now
+                      Pay
                     </button>
                   )}
                 </div>
@@ -158,7 +152,7 @@ export function PaymentPlan({
           })}
         </div>
         <p className="border-t border-brand-line px-5 py-4 text-xs leading-5 text-brand-muted md:px-6">
-          Settled receipts stay with this plan. The latest one is also filed in <Link href="/account/documents" className="font-semibold text-brand-ink underline-offset-2 hover:underline">Documents</Link>.
+          Receipts are in <Link href="/account/documents" className="font-semibold text-brand-ink underline-offset-2 hover:underline">Documents</Link>.
         </p>
       </section>
 
@@ -172,6 +166,11 @@ export function PaymentPlan({
             payButtonRef.current?.focus()
           }}
           onRecorded={recordPayment}
+          onResolved={(state) => {
+            if (state !== 'failed') return
+            setPending(null)
+            try { sessionStorage.removeItem(storageKey) } catch { /* The plan still refreshes from the account. */ }
+          }}
         />
       )}
       {receipt && (
@@ -197,19 +196,23 @@ function PaymentDialog({
   reference,
   onClose,
   onRecorded,
+  onResolved,
 }: {
   amount: string
   due: string
   reference: string
   onClose: () => void
   onRecorded: (payment: PendingPayment) => void
+  onResolved: (state: 'paid' | 'failed') => void
 }) {
   const { profile } = useProfile()
-  const [methodId, setMethodId] = useState(methods[0].id)
+  const router = useRouter()
   const [phone, setPhone] = useState(profile.phone)
   const [phoneEdited, setPhoneEdited] = useState(false)
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [recorded, setRecorded] = useState<PendingPayment | null>(null)
+  const [outcome, setOutcome] = useState<'pending' | 'paid' | 'failed'>('pending')
   const panelRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -217,22 +220,42 @@ function PaymentDialog({
     if (!phoneEdited) setPhone(profile.phone)
   }, [profile.phone, phoneEdited])
 
+  const onResolvedRef = useRef(onResolved)
+  onResolvedRef.current = onResolved
+
+  useEffect(() => {
+    if (!recorded || outcome !== 'pending') return
+    let stopped = false
+    const tick = async () => {
+      const result = await refreshMobileMoneyPayment(reference)
+      if (stopped || !result.state || result.state === 'pending') return
+      setOutcome(result.state)
+      onResolvedRef.current(result.state)
+      router.refresh()
+    }
+    const timer = window.setInterval(tick, 4000)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [recorded, outcome, reference, router])
+
   useDialog(panelRef, closeRef, onClose)
 
-  const method = methods.find((item) => item.id === methodId) ?? methods[0]
-
   const submit = async () => {
-    const note = method.kind === 'mobile' ? `The prompt goes to ${phone.trim()}.` : 'Card details are collected by the provider.'
-    if (method.kind === 'mobile' && phone.trim().length < 7) {
-      setError('Enter the mobile money number that should receive the prompt.')
+    if (phone.trim().length < 7) {
+      setError('Enter a phone number.')
       return
     }
-    const next = { reference, method: method.label, note, phone: phone.trim() }
-    const result = await recordPaymentAttempt({ reference, method: method.label, phone: phone.trim(), note })
-    if (result.error) {
-      setError(result.error)
+    setSubmitting(true)
+    const result = await startMobileMoneyPayment({ reference, phone: phone.trim() })
+    setSubmitting(false)
+    if (result.error || !result.state) {
+      setError(result.error || 'Could not start.')
       return
     }
+    const next = { reference, method: 'Mobile Money', note: 'Approve the prompt on your phone.', phone: phone.trim() }
+    setOutcome('pending')
     setRecorded(next)
     onRecorded(next)
     setError('')
@@ -244,8 +267,8 @@ function PaymentDialog({
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="payment-title" className="relative z-10 max-h-[92dvh] w-full max-w-lg overflow-y-auto bg-white">
         <div className="flex items-start justify-between gap-4 border-b border-brand-line p-6">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-gold-deep">Secure payment</p>
-            <h2 id="payment-title" className="mt-2 font-serif text-3xl tracking-[-0.03em]">{recorded ? 'Payment initiated' : 'Pay installment'}</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-gold-deep">Pay</p>
+            <h2 id="payment-title" className="mt-2 font-serif text-3xl tracking-[-0.03em]">{outcome === 'paid' ? 'Paid' : recorded ? 'Check your phone' : 'Pay'}</h2>
           </div>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Close payment" className="flex size-11 shrink-0 items-center justify-center border border-brand-line text-brand-ink hover:border-brand-ink">
             <X size={16} />
@@ -253,59 +276,52 @@ function PaymentDialog({
         </div>
         {recorded ? (
           <div className="p-6">
-            <CheckCircle2 className="text-brand-green" size={36} />
+            <CheckCircle2 className={outcome === 'failed' ? 'text-brand-gold-deep' : 'text-brand-green'} size={36} />
             <p className="mt-5 text-sm leading-6 text-brand-muted">
-              Your {recorded.method} request is recorded against {recorded.reference}. {recorded.note} The installment stays outstanding until the provider confirms the transfer.
+              {outcome === 'paid'
+                ? 'Paid.'
+                : outcome === 'failed'
+                  ? 'Not paid. Try again.'
+                  : 'Approve the prompt on your phone.'}
             </p>
             <dl className="mt-6 divide-y divide-brand-line border border-brand-line">
               <ReceiptRow label="Amount" value={amount} />
               <ReceiptRow label="Method" value={recorded.method} />
               <ReceiptRow label="Reference" value={recorded.reference} />
             </dl>
-            <button type="button" onClick={onClose} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-ink text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">
-              Return to payments
-            </button>
+            {outcome === 'failed' ? (
+              <button type="button" onClick={() => setRecorded(null)} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-gold text-xs font-bold uppercase tracking-[0.12em] text-brand-ink hover:bg-brand-gold-light">
+                Try again
+              </button>
+            ) : (
+              <button type="button" onClick={onClose} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-ink text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">
+                Close
+              </button>
+            )}
           </div>
         ) : (
           <div className="p-6">
             <div className="flex items-end justify-between gap-4 bg-brand-surface p-5">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">Amount due</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">Due</p>
                 <p className="mt-2 font-serif text-3xl tracking-[-0.03em]">{amount}</p>
               </div>
               <p className="text-right text-xs text-brand-muted">Due<br /><span className="font-semibold text-brand-ink">{due}</span></p>
             </div>
-            <div className="mt-6" role="radiogroup" aria-label="Payment method">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">Payment method</p>
-              <div className="mt-3 grid gap-2">
-                {methods.map((item) => {
-                  const selected = item.id === method.id
-                  const Icon = item.kind === 'card' ? CreditCard : Smartphone
-                  return (
-                    <button key={item.id} type="button" role="radio" aria-checked={selected} onClick={() => { setMethodId(item.id); setError('') }} className={`flex items-center justify-between gap-3 border p-4 text-left ${selected ? 'border-brand-gold-deep bg-brand-gold/10' : 'border-brand-line hover:border-brand-ink'}`}>
-                      <span className="flex items-center gap-3">
-                        <Icon size={16} className="text-brand-gold-deep" />
-                        <span>
-                          <span className="block text-sm font-semibold">{item.label}</span>
-                          <span className="mt-1 block text-xs text-brand-muted">{item.detail}</span>
-                        </span>
-                      </span>
-                      <span className={`size-3 rounded-full border ${selected ? 'border-brand-gold-deep bg-brand-gold-deep' : 'border-brand-line'}`} />
-                    </button>
-                  )
-                })}
-              </div>
+            <div className="mt-6 flex items-center gap-3 border border-brand-gold-deep bg-brand-gold/10 p-4">
+              <Smartphone size={16} className="text-brand-gold-deep" />
+              <span>
+                <span className="block text-sm font-semibold">Mobile Money</span>
+                <span className="mt-1 block text-xs text-brand-muted">Prompt on your phone.</span>
+              </span>
             </div>
-            {method.kind === 'mobile' && (
-              <label htmlFor="payment-phone" className="mt-5 block">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">Mobile money number</span>
-                <input id="payment-phone" name="phone" type="tel" autoComplete="tel" value={phone} aria-invalid={error ? true : undefined} aria-describedby={error ? 'payment-phone-error' : undefined} onChange={(event) => { setPhoneEdited(true); setPhone(event.target.value); setError('') }} className="field mt-2" />
-                {error && <span id="payment-phone-error" className="mt-2 block text-xs text-brand-gold-deep">{error}</span>}
-              </label>
-            )}
-            {method.kind === 'card' && <p className="mt-5 text-xs leading-5 text-brand-muted">This portal records the request. The provider collects the card details, and they are not stored on your account.</p>}
-            <button type="button" onClick={submit} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-gold text-xs font-bold uppercase tracking-[0.14em] text-brand-ink hover:bg-brand-gold-light">
-              Continue securely
+            <label htmlFor="payment-phone" className="mt-5 block">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">Phone</span>
+              <input id="payment-phone" name="phone" type="tel" autoComplete="tel" value={phone} aria-invalid={error ? true : undefined} aria-describedby={error ? 'payment-phone-error' : undefined} onChange={(event) => { setPhoneEdited(true); setPhone(event.target.value); setError('') }} className="field mt-2" />
+              {error && <span id="payment-phone-error" className="mt-2 block text-xs text-brand-gold-deep">{error}</span>}
+            </label>
+            <button type="button" onClick={submit} disabled={submitting} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-gold text-xs font-bold uppercase tracking-[0.14em] text-brand-ink hover:bg-brand-gold-light disabled:opacity-60">
+              {submitting ? 'Sending…' : 'Pay'}
             </button>
           </div>
         )}
@@ -348,20 +364,19 @@ function ReceiptDialog({
           <p className="text-xs text-brand-muted">{installment.reference}</p>
         </div>
         <dl className="mt-4 divide-y divide-brand-line border-y border-brand-line">
-          <ReceiptRow label="Received from" value={profile.name} />
+          <ReceiptRow label="From" value={profile.name} />
           <ReceiptRow label="Service" value={serviceTitle} />
-          <ReceiptRow label="Installment" value={installment.name} />
-          <ReceiptRow label="Method" value={installment.method ?? 'Recorded payment'} />
-          <ReceiptRow label="Date received" value={installment.paidOn ?? installment.due} />
-          <ReceiptRow label="Service reference" value={serviceReference} />
+          <ReceiptRow label="Item" value={installment.name} />
+          <ReceiptRow label="Method" value={installment.method ?? 'Payment'} />
+          <ReceiptRow label="Date" value={installment.paidOn ?? installment.due} />
+          <ReceiptRow label="Ref" value={serviceReference} />
         </dl>
-        <div className="flex items-end justify-between gap-4 p-6">
-          <p className="max-w-xs text-xs leading-5 text-brand-muted">This confirms the installment was received and applied to your construction account.</p>
+        <div className="flex items-end justify-end p-6">
           <p className="font-serif text-2xl tracking-[-0.03em]">{installment.amount}</p>
         </div>
         {installment.reference === 'TXN-2048' && (
           <div className="border-t border-brand-line px-6 py-4">
-            <Link href="/account/documents" className="text-[10px] font-bold uppercase tracking-wider text-brand-gold-deep hover:text-brand-ink">Open in documents</Link>
+            <Link href="/account/documents" className="text-[10px] font-bold uppercase tracking-wider text-brand-gold-deep hover:text-brand-ink">Documents</Link>
           </div>
         )}
       </div>

@@ -40,7 +40,7 @@ export default async function ServiceDetailPage({ params }: Props) {
             <div className="flex justify-between gap-4"><dt className="text-brand-muted">Completion</dt><dd className="font-semibold">{service.completion || 'To be confirmed'}</dd></div>
           </dl>
           <div className="mt-6 flex flex-col gap-3 text-[10px] font-bold uppercase tracking-wider">
-            <Link href="/account/payments" className="text-brand-gold-deep">View payment plan</Link>
+            <Link href="/account/payments" className="text-brand-gold-deep">Payments</Link>
             <Link href="/account/documents" className="text-brand-gold-deep">View documents</Link>
           </div>
         </section>

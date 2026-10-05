@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { useProfile, type Profile } from '@/components/account/profile-context'
+import { ProfilePhoto } from '@/components/account/profile-photo'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -27,6 +28,7 @@ export function ProfileForm() {
       email: draft.email.trim(),
       phone: draft.phone.trim(),
       location: draft.location.trim(),
+      avatar: draft.avatar,
     }
     const nextErrors: Partial<Record<keyof Profile, string>> = {}
     if (next.name.length < 2) nextErrors.name = 'Enter your full name.'
@@ -48,7 +50,7 @@ export function ProfileForm() {
   return (
     <form onSubmit={onSubmit} className="mt-8 max-w-2xl border border-brand-line bg-white" noValidate>
       <div className="flex items-center gap-4 border-b border-brand-line p-6">
-        <img src="/placeholder-user.jpg" alt="" width={56} height={56} className="size-14 border border-brand-line object-cover" />
+        <ProfilePhoto src={draft.avatar} size={56} />
         <div>
           <p className="text-sm font-semibold">{draft.name.trim() || 'Your name'}</p>
           <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-brand-muted">{role}</p>

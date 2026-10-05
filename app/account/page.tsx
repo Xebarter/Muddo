@@ -22,7 +22,7 @@ export default async function AccountOverviewPage() {
         eyebrow="Overview"
         title="Your service overview"
         description="Stay up to date with your project, payments and the next step in your Mudogwaluyiira journey."
-        action={<Link href="/account/payments" className="inline-flex h-12 items-center justify-center bg-brand-gold px-5 text-xs font-bold uppercase tracking-[0.12em] text-brand-ink hover:bg-brand-gold-light">Pay installment</Link>}
+        action={<Link href="/account/payments" className="inline-flex h-12 items-center justify-center bg-brand-gold px-5 text-xs font-bold uppercase tracking-[0.12em] text-brand-ink hover:bg-brand-gold-light">Pay</Link>}
       />
       {!service ? (
         <p className="mt-8 border border-brand-line bg-white p-6 text-sm text-brand-muted">No service is linked to this account yet. A request from the website is the first step, and the operations team will open the record here.</p>

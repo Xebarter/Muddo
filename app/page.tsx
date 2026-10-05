@@ -10,6 +10,7 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react'
+import { PayButton } from '@/components/site/pay-button'
 import { RequestServiceButton, SiteChrome } from '@/components/site/site-chrome'
 import { businesses } from '@/lib/businesses'
 import { companyPhoneDisplay, companyPhoneTel, companyWhatsApp } from '@/lib/contact'
@@ -84,6 +85,7 @@ export default async function Page() {
 
       <section id="contact" className="bg-[#c9a45c] text-[#15251f]"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 px-5 py-16 md:flex-row md:items-center lg:px-8 lg:py-20"><div><p className="eyebrow text-[#15251f]/60">Let&apos;s work together</p><h2 className="font-serif text-4xl tracking-[-0.03em] md:text-5xl">Need our services?</h2><p className="mt-3 max-w-xl text-sm leading-6 text-[#15251f]/70">Whether you are building, educating, developing talent or planning an event, we are ready to serve.</p><a href={companyPhoneTel} className="mt-4 inline-flex text-sm font-semibold tracking-wide underline decoration-[#15251f]/30 underline-offset-4 hover:decoration-[#15251f]">{companyPhoneDisplay}</a></div><RequestServiceButton className="w-fit rounded-none bg-[#15251f] px-7 text-xs font-bold uppercase tracking-[0.16em] text-white hover:bg-[#263f35]">Request a service <ArrowRight data-icon="inline-end" /></RequestServiceButton></div></section>
 
+      <PayButton />
       <a
         href={companyWhatsApp}
         target="_blank"

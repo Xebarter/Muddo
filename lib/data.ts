@@ -28,6 +28,7 @@ export type PortalProfile = {
   phone: string
   location: string
   role: string
+  avatar: string
 }
 
 export type PortalService = {
@@ -74,6 +75,14 @@ export type PortalNotification = {
   read?: boolean
 }
 
+export type PortalMobilePayment = {
+  reference: string
+  amount: string
+  method: string
+  status: string
+  date: string
+}
+
 export type PortalData = {
   profile: PortalProfile
   services: PortalService[]
@@ -81,10 +90,11 @@ export type PortalData = {
   paymentSummary: { paid: string; outstanding: string; total: string; paidWidth: string }
   documents: PortalDocument[]
   notifications: PortalNotification[]
+  mobilePayments: PortalMobilePayment[]
 }
 
 const demoPortal = (): PortalData => ({
-  profile: { ...customer, role: customer.role },
+  profile: { ...customer, role: customer.role, avatar: '' },
   services: [{
     ...demoService,
     timeline: demoTimeline,
@@ -98,6 +108,7 @@ const demoPortal = (): PortalData => ({
   paymentSummary: demoPaymentSummary,
   documents: demoDocuments,
   notifications: demoNotifications,
+  mobilePayments: [],
 })
 
 export const getPortal = cache(async (): Promise<PortalData | null> => {
@@ -115,12 +126,14 @@ export const getPortal = cache(async (): Promise<PortalData | null> => {
     phone: profile?.phone || user.phone || '',
     location: profile?.location || '',
     role: profile?.role === 'admin' ? 'Admin' : 'Customer',
+    avatar: typeof user.user_metadata?.avatar_url === 'string' ? user.user_metadata.avatar_url : '',
   }
 
   const { data: owned, error: customerError } = await supabase.from('customers').select('id').eq('profile_id', user.id).maybeSingle()
   if (customerError) return { ...demoPortal(), profile: accountProfile }
+  const mobilePayments = await mobilePaymentsFor(supabase, accountProfile.email)
   if (!owned) {
-    return { profile: accountProfile, services: [], installments: [], paymentSummary: { paid: formatUgx(0), outstanding: formatUgx(0), total: formatUgx(0), paidWidth: '0%' }, documents: [], notifications: [] }
+    return { profile: accountProfile, services: [], installments: [], paymentSummary: { paid: formatUgx(0), outstanding: formatUgx(0), total: formatUgx(0), paidWidth: '0%' }, documents: [], notifications: [], mobilePayments }
   }
 
   const [{ data: services }, { data: documents }, { data: notifications }] = await Promise.all([
@@ -198,8 +211,22 @@ export const getPortal = cache(async (): Promise<PortalData | null> => {
       href: item.href,
       read: Boolean(item.read_at),
     })),
+    mobilePayments,
   }
 })
+
+async function mobilePaymentsFor(supabase: Awaited<ReturnType<typeof createClient>>, email: string): Promise<PortalMobilePayment[]> {
+  if (!email) return []
+  const { data, error } = await supabase.from('mobile_payments').select('reference, amount, method, status, created_at').eq('email', email.toLowerCase()).order('created_at', { ascending: false })
+  if (error) return []
+  return (data ?? []).map((item) => ({
+    reference: item.reference,
+    amount: formatUgx(Number(item.amount)),
+    method: item.method,
+    status: paymentLabel(item.status),
+    date: formatLongDate(item.created_at),
+  }))
+}
 
 export type PublicContent = {
   activities: { title: string; text: string; category: string; slug: string; image: string }[]
@@ -245,6 +272,7 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
     requests,
     services,
     payments,
+    mobilePayments,
     progress,
     documents,
     activities,
@@ -255,6 +283,7 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
     supabase.from('service_requests').select('id, reference, full_name, service, location, status, created_at').order('created_at', { ascending: false }),
     supabase.from('services').select('id, reference, title, division, progress, status, customer_id').order('created_at', { ascending: false }),
     supabase.from('installments').select('amount, status, paid_on, due_on, reference, service_id').order('due_on', { ascending: false }),
+    supabase.from('mobile_payments').select('email, amount, status, created_at, method').order('created_at', { ascending: false }),
     supabase.from('progress_updates').select('title, progress, published_on, service_id').order('published_on', { ascending: false }),
     supabase.from('documents').select('name, status, doc_type, customer_id').order('filed_on', { ascending: false }),
     supabase.from('homepage_activities').select('category, title, status').order('sort_order'),
@@ -278,8 +307,11 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
     divisions.set(service.division, (divisions.get(service.division) ?? 0) + 1)
   }
 
+  const mobileRows = mobilePayments.error ? [] : (mobilePayments.data ?? [])
   const paid = (payments.data ?? []).filter((item) => item.status === 'paid').reduce((sum, item) => sum + Number(item.amount), 0)
+    + mobileRows.filter((item) => item.status === 'paid').reduce((sum, item) => sum + Number(item.amount), 0)
   const outstanding = (payments.data ?? []).filter((item) => item.status !== 'paid').reduce((sum, item) => sum + Number(item.amount), 0)
+    + mobileRows.filter((item) => item.status === 'pending').reduce((sum, item) => sum + Number(item.amount), 0)
   const active = (services.data ?? []).filter((item) => item.status === 'in_progress').length
   const completed = (services.data ?? []).filter((item) => item.status === 'completed').length
   const reviewDocs = (documents.data ?? []).filter((item) => item.status === 'awaiting_review' || item.status === 'draft').length
@@ -304,16 +336,25 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
     })),
     services: (services.data ?? []).map((item) => ({ label: `${item.reference} · ${item.title} · ${item.progress}%` })),
     portfolio: [...divisions.entries()].map(([label, count]) => ({ label, count })),
-    payments: (payments.data ?? []).map((item) => {
-      const service = serviceById.get(item.service_id)
-      return {
-        customer: service ? customerName.get(service.customer_id) ?? 'Customer' : 'Customer',
-        service: service?.title ?? 'Service',
+    payments: [
+      ...mobileRows.map((item) => ({
+        customer: item.email,
+        service: item.method,
         amount: formatUgx(Number(item.amount)),
-        date: formatLongDate(item.paid_on || item.due_on),
+        date: formatLongDate(item.created_at),
         status: paymentLabel(item.status),
-      }
-    }),
+      })),
+      ...(payments.data ?? []).map((item) => {
+        const service = serviceById.get(item.service_id)
+        return {
+          customer: service ? customerName.get(service.customer_id) ?? 'Customer' : 'Customer',
+          service: service?.title ?? 'Service',
+          amount: formatUgx(Number(item.amount)),
+          date: formatLongDate(item.paid_on || item.due_on),
+          status: paymentLabel(item.status),
+        }
+      }),
+    ],
     progress: (progress.data ?? []).map((item) => {
       const service = serviceById.get(item.service_id)
       return `${item.title} · ${service?.title ?? 'Service'} · ${item.progress}%`
@@ -339,3 +380,33 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
     },
   }
 })
+
+export type ManagedContent = {
+  id: string
+  slug: string
+  category: string
+  title: string
+  body: string
+  image: string
+  sortOrder: number
+  status: 'draft' | 'published'
+}
+
+export async function getManagedContent(kind: 'activity' | 'gallery'): Promise<ManagedContent[] | null> {
+  const supabase = await createClient()
+  const query = kind === 'gallery'
+    ? supabase.from('gallery_items').select('id, title, category, image_path, sort_order, status').order('sort_order').order('title')
+    : supabase.from('homepage_activities').select('id, slug, category, title, body, image_path, sort_order, status').order('sort_order').order('title')
+  const { data, error } = await query
+  if (error) return null
+  return (data ?? []).map((item) => ({
+    id: item.id,
+    slug: 'slug' in item ? item.slug : '',
+    category: item.category,
+    title: item.title,
+    body: 'body' in item ? item.body : '',
+    image: item.image_path,
+    sortOrder: item.sort_order,
+    status: item.status === 'draft' ? 'draft' : 'published',
+  }))
+}

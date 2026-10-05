@@ -27,6 +27,7 @@ export async function openFirebaseSession(idToken: string) {
   const phone = decoded.phone_number ?? ''
   const email = (decoded.email ?? '').toLowerCase()
   const name = typeof decoded.name === 'string' ? decoded.name : ''
+  const picture = typeof decoded.picture === 'string' ? decoded.picture : ''
 
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,14 +57,14 @@ export async function openFirebaseSession(idToken: string) {
       email_confirm: true,
       phone: phone || undefined,
       phone_confirm: Boolean(phone),
-      user_metadata: { full_name: name, phone, firebase_uid: decoded.uid },
+      user_metadata: { full_name: name, phone, firebase_uid: decoded.uid, avatar_url: picture },
       app_metadata: { role, provider: 'firebase' },
     })
     if (createError && !/already|registered|exists/i.test(createError.message)) {
       const retry = await admin.auth.admin.createUser({
         email: authEmail,
         email_confirm: true,
-        user_metadata: { full_name: name, phone, firebase_uid: decoded.uid },
+        user_metadata: { full_name: name, phone, firebase_uid: decoded.uid, avatar_url: picture },
         app_metadata: { role, provider: 'firebase' },
       })
       if (retry.error && !/already|registered|exists/i.test(retry.error.message)) {
@@ -90,6 +91,12 @@ export async function openFirebaseSession(idToken: string) {
     else if (!match) patch.full_name = 'Customer'
     if (phone) patch.phone = phone
     if (Object.keys(patch).length) await admin.from('profiles').update(patch).eq('id', user.id)
+    if (picture) {
+      const { data: current } = await admin.auth.admin.getUserById(user.id)
+      await admin.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...(current.user?.user_metadata ?? {}), avatar_url: picture },
+      })
+    }
 
     if (phone) {
       const { data: customers } = await admin.from('customers').select('id, phone, profile_id')

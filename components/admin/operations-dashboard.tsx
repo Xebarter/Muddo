@@ -108,12 +108,12 @@ export function OperationsDashboard({
         <div className="flex flex-col gap-4 border-b border-brand-line p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-muted">Finance</p>
-            <h2 className="mt-2 font-serif text-2xl">Recent payments</h2>
+            <h2 className="mt-2 font-serif text-2xl">Payments</h2>
           </div>
           <label className="flex h-10 items-center gap-2 border border-brand-line px-3 text-brand-muted">
             <Search size={16} />
-            <span className="sr-only">Search payments</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search payments" className="w-36 bg-transparent text-xs text-brand-ink outline-none placeholder:text-brand-muted" />
+            <span className="sr-only">Search</span>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search" className="w-36 bg-transparent text-xs text-brand-ink outline-none placeholder:text-brand-muted" />
           </label>
         </div>
         <div className="overflow-x-auto">

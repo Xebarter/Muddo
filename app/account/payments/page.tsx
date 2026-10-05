@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { AccountPageHeader } from '@/components/account/account-page'
 import { PaymentPlan } from '@/components/account/payment-plan'
+import { MobilePaymentList } from '@/components/account/mobile-payment-list'
 import { getPortal } from '@/lib/data'
 
 export const metadata: Metadata = {
@@ -18,14 +19,15 @@ export default async function PaymentsPage() {
         eyebrow="Payments"
         title="Payment plan"
         description={portal && due
-          ? `${portal.paymentSummary.paid} of ${portal.paymentSummary.total} is settled. The next installment of ${due.amount} is due on ${due.due}.`
-          : 'Installments for your services appear here once a payment plan is opened.'}
+          ? `${portal.paymentSummary.paid} paid. Next ${due.amount}, ${due.due}.`
+          : 'No payment plan yet.'}
       />
       <PaymentPlan
         rows={portal?.installments}
         summary={portal?.paymentSummary}
         activeService={service ? { title: service.title, reference: service.reference } : { title: 'Your service', reference: '' }}
       />
+      <MobilePaymentList rows={portal?.mobilePayments ?? []} />
     </>
   )
 }

@@ -8,6 +8,7 @@ export type Profile = {
   email: string
   phone: string
   location: string
+  avatar: string
 }
 
 const ProfileContext = createContext<{
@@ -15,7 +16,7 @@ const ProfileContext = createContext<{
   role: string
   saveProfile: (next: Profile) => Promise<{ error?: string }>
 }>({
-  profile: { name: '', email: '', phone: '', location: '' },
+  profile: { name: '', email: '', phone: '', location: '', avatar: '' },
   role: 'Customer',
   saveProfile: async () => ({}),
 })

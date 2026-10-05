@@ -1,6 +1,7 @@
 -- Mudogwaluyiira Group — Supabase setup
--- Run this entire script once in the Supabase SQL editor.
+-- Run this entire script in the Supabase SQL editor.
 -- It is safe to run again: existing rows are left in place.
+-- Re-run it after updates so new tables, including mobile payments, exist.
 --
 -- Demo sign-in after the script finishes (change these passwords in production):
 --   Customer  john.doe@example.com       / MuddoDemo2026!
@@ -105,8 +106,30 @@ create table if not exists public.payment_attempts (
   phone text not null default '',
   note text not null default '',
   status text not null default 'pending' check (status in ('pending', 'confirmed', 'failed')),
+  provider_id text,
+  provider_status text not null default '',
   created_at timestamptz not null default now()
 );
+
+alter table public.payment_attempts add column if not exists provider_id text;
+alter table public.payment_attempts add column if not exists provider_status text not null default '';
+create unique index if not exists payment_attempts_provider_id_key on public.payment_attempts (provider_id) where provider_id is not null;
+
+create table if not exists public.mobile_payments (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid references public.customers (id) on delete set null,
+  email text not null,
+  phone text not null,
+  amount bigint not null check (amount > 0),
+  method text not null,
+  status text not null default 'pending' check (status in ('pending', 'paid', 'failed')),
+  reference text not null unique,
+  provider_id text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists mobile_payments_email_idx on public.mobile_payments (email);
+create unique index if not exists mobile_payments_provider_id_key on public.mobile_payments (provider_id) where provider_id is not null;
 
 create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
@@ -344,6 +367,7 @@ alter table public.service_milestones enable row level security;
 alter table public.progress_updates enable row level security;
 alter table public.installments enable row level security;
 alter table public.payment_attempts enable row level security;
+alter table public.mobile_payments enable row level security;
 alter table public.documents enable row level security;
 alter table public.notifications enable row level security;
 alter table public.homepage_activities enable row level security;
@@ -452,6 +476,20 @@ using (exists (
   join public.services s on s.id = i.service_id
   where i.id = installment_id and public.owns_customer(s.customer_id)
 ));
+
+drop policy if exists "admin mobile payments" on public.mobile_payments;
+create policy "admin mobile payments" on public.mobile_payments
+for all to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "read own mobile payments" on public.mobile_payments;
+create policy "read own mobile payments" on public.mobile_payments
+for select to authenticated
+using (
+  lower(email) = lower(coalesce((select p.email from public.profiles p where p.id = auth.uid()), ''))
+  or public.owns_customer(customer_id)
+);
 
 drop policy if exists "insert own payment attempts" on public.payment_attempts;
 create policy "insert own payment attempts" on public.payment_attempts

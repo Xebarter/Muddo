@@ -20,9 +20,9 @@ export default async function PaymentsPage() {
   return (
     <>
       <AdminPageHeader
-        eyebrow="Finance operations"
-        title="Payment ledger"
-        description="Review verified transactions, installment plans and outstanding balances. Customer payment requests stay pending until they are confirmed."
+        eyebrow="Payments"
+        title="Ledger"
+        description="Pending until confirmed."
       />
       <RecordGrid rows={snapshot ? snapshot.payments.map((item) => `${item.customer} · ${item.amount} · ${item.status}`) : fallbackLedger} />
       <PaymentLedger payments={snapshot?.payments ?? fallbackPayments} />

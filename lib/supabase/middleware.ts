@@ -24,8 +24,9 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
   const role = user?.app_metadata?.role
+  const adminPath = path === '/admin' || path.startsWith('/admin/')
 
-  if ((path.startsWith('/account') || path.startsWith('/admin')) && !user) {
+  if ((path === '/account' || path.startsWith('/account/') || adminPath) && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', path)

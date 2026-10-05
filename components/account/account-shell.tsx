@@ -7,6 +7,7 @@ import { Bell, FileText, Home, LayoutDashboard, Menu, ShieldCheck, User, WalletC
 import { BrandMark } from '@/components/site/design-system'
 import { SignOutButton } from '@/components/auth/sign-out-button'
 import { ProfileProvider, useProfile } from '@/components/account/profile-context'
+import { ProfilePhoto } from '@/components/account/profile-photo'
 import type { PortalProfile } from '@/lib/data'
 
 const navigation = [
@@ -25,7 +26,7 @@ function isCurrent(pathname: string, href: string) {
 
 export function AccountShell({ children, profile, unread }: { children: React.ReactNode; profile: PortalProfile; unread: number }) {
   return (
-    <ProfileProvider initial={{ name: profile.name, email: profile.email, phone: profile.phone, location: profile.location }} role={profile.role}>
+    <ProfileProvider initial={{ name: profile.name, email: profile.email, phone: profile.phone, location: profile.location, avatar: profile.avatar }} role={profile.role}>
       <AccountFrame unread={unread}>{children}</AccountFrame>
     </ProfileProvider>
   )
@@ -61,7 +62,7 @@ function AccountFrame({ children, unread }: { children: React.ReactNode; unread:
               {unread > 0 && <span className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-brand-gold-deep" />}
             </Link>
             <Link href="/account/profile" className="hidden items-center gap-3 border-l border-brand-line pl-4 transition-colors hover:text-brand-gold-deep sm:flex">
-              <img src="/placeholder-user.jpg" alt="" width={36} height={36} className="size-9 border border-brand-line object-cover" />
+              <ProfilePhoto src={profile.avatar} size={36} />
               <div>
                 <p className="text-xs font-semibold">{profile.name}</p>
                 <p className="mt-0.5 text-[10px] uppercase tracking-wider text-brand-muted">{role}</p>

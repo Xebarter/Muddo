@@ -194,3 +194,77 @@
 .field {
   @apply w-full border border-[#d9ddd8] bg-white px-4 py-3 text-sm text-[#15251f] outline-none transition placeholder:text-[#9aa49f] focus:border-[#b48b45] focus:ring-1 focus:ring-[#b48b45];
 }
+
+.pay-button {
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 2px;
+  background: transparent;
+  box-shadow: 0 14px 30px rgba(21, 37, 31, 0.18);
+}
+
+.pay-button-spin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  aspect-ratio: 1;
+  width: 220%;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(
+    from 0deg,
+    #ff5c5c 0deg,
+    #ffb15a 70deg,
+    #ffe56a 130deg,
+    #7eb6ff 210deg,
+    #3d7eff 270deg,
+    #ff5c5c 360deg
+  );
+  animation: pay-border 4.8s linear infinite;
+}
+
+.pay-button-glow {
+  filter: blur(7px);
+  opacity: 0.72;
+}
+
+.pay-button-face {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  height: 3.25rem;
+  align-items: center;
+  border-radius: 999px;
+  background: linear-gradient(105deg, #ff4d4d 0%, #ff8a3d 42%, #ffe14a 100%);
+  padding-inline: 1.35rem;
+}
+
+.pay-button-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #0d4a32;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+}
+
+.pay-button:focus-visible {
+  outline: 2px solid #3d7eff;
+  outline-offset: 3px;
+}
+
+@keyframes pay-border {
+  to {
+    transform: translate(-50%, -50%) rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pay-button-spin {
+    animation: none;
+    transform: translate(-50%, -50%);
+  }
+}
