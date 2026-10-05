@@ -72,7 +72,8 @@ export function HeroImageForm({ image, unavailable }: { image: string; unavailab
         setFile(null)
         setFileInput((value) => value + 1)
       }}
-      className="mt-8 border border-brand-line bg-white"
+      id="hero"
+      className="mt-8 scroll-mt-28 border border-brand-line bg-white"
     >
       <div className="border-b border-brand-line px-6 py-5">
         <h2 className="font-serif text-2xl">Hero image</h2>

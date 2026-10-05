@@ -27,16 +27,18 @@ export function ContentManager({
   kind,
   items,
   unavailable,
+  focusId,
 }: {
   kind: 'activity' | 'gallery'
   items: ManagedContent[]
   unavailable?: boolean
+  focusId?: string
 }) {
   const [editing, setEditing] = useState<ManagedContent | 'new' | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [highlight, setHighlight] = useState<string | null>(null)
+  const [highlight, setHighlight] = useState<string | null>(focusId ?? null)
   const [leave, setLeave] = useState<Leave | null>(null)
   const dirtyRef = useRef(false)
   const leaveRef = useRef<HTMLDivElement>(null)
@@ -69,7 +71,7 @@ export function ContentManager({
 
   useEffect(() => {
     if (!highlight) return
-    document.querySelector(`[data-content-id="${CSS.escape(highlight)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    document.querySelector(`[data-content-id="${CSS.escape(highlight)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [highlight, items])
 
   useEffect(() => {
@@ -132,7 +134,7 @@ export function ContentManager({
       ) : (
         <ol className="mt-6 grid gap-4">
           {items.map((item, index) => (
-            <li key={item.id} data-content-id={item.id} className={`border bg-white ${highlight === item.id || (editing !== 'new' && editing?.id === item.id) ? 'border-brand-ink' : 'border-brand-line'}`}>
+            <li key={item.id} data-content-id={item.id} className={`scroll-mt-28 border bg-white ${highlight === item.id || (editing !== 'new' && editing?.id === item.id) ? 'border-brand-ink' : 'border-brand-line'}`}>
               {editing !== 'new' && editing?.id === item.id ? (
                 <ContentForm kind={kind} item={item} embedded onDirty={markDirty} onClose={() => requestEditor(null)} onSaved={saved} />
               ) : (

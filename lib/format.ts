@@ -32,6 +32,8 @@ export function formatRequestWhen(value: string) {
   return formatLongDate(value)
 }
 
+export const requestStatuses = ['new', 'reviewing', 'contacted', 'converted', 'closed'] as const
+
 const requestLabels: Record<string, string> = {
   new: 'New',
   reviewing: 'Reviewing',

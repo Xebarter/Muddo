@@ -20,17 +20,24 @@ export function ServiceManager({
   customers,
   homepageImages,
   unavailable,
+  focusId,
 }: {
   services: ManagedService[]
   customers: { id: string; name: string }[]
   homepageImages: Record<string, string>
   unavailable?: boolean
+  focusId?: string
 }) {
   const [editing, setEditing] = useState<ManagedService | 'new' | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const { pending, track } = useAdminProgress()
+
+  useEffect(() => {
+    if (!focusId) return
+    document.querySelector(`[data-service-id="${CSS.escape(focusId)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focusId])
 
   const run = (task: () => Promise<{ error?: string }>, done: string) => {
     setError('')
@@ -81,7 +88,7 @@ export function ServiceManager({
       ) : (
         <ol className="mt-6 grid gap-4">
           {services.map((item) => (
-            <li key={item.id} className="grid gap-5 border border-brand-line bg-white p-4 sm:grid-cols-[180px_1fr] sm:p-5">
+            <li key={item.id} data-service-id={item.id} className={`grid scroll-mt-28 gap-5 border bg-white p-4 sm:grid-cols-[180px_1fr] sm:p-5 ${focusId === item.id ? 'border-brand-ink' : 'border-brand-line'}`}>
               <div>
                 <img src={item.displayImage} alt="" className="aspect-[4/3] w-full border border-brand-line object-cover" />
                 {item.usingHomepageImage && <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted">Homepage image</p>}

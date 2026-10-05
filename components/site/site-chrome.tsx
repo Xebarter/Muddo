@@ -77,39 +77,52 @@ export function SiteChrome({ children, mobileDock = false }: { children: ReactNo
         />
         {children}
         <footer className="bg-[#0f1c17] text-white/70">
-          <div className="mx-auto grid max-w-7xl gap-12 px-5 py-14 md:grid-cols-4 lg:px-8">
-            <div className="md:col-span-2">
+          <div className="mx-auto max-w-7xl px-5 pt-14 lg:px-8 lg:pt-20">
+            <div className="flex flex-col gap-6 border-b border-white/10 pb-10 sm:flex-row sm:items-end sm:justify-between">
               <BrandMark href="/" size="sm" className="text-white" />
-              <p className="mt-6 max-w-sm text-sm leading-6">Building businesses. Developing people. Creating opportunities across Uganda.</p>
+              <p className="max-w-sm text-sm leading-6 sm:text-right">Building businesses. Developing people. Creating opportunities across Uganda.</p>
             </div>
-            <div>
-              <p className="footer-label">Explore</p>
-              <div className="mt-5 flex flex-col gap-3 text-sm">
-                <a href="/#about-us">About us</a>
-                <a href="/what-we-do">What we do</a>
-                <a href="/gallery">Gallery</a>
-                <a href="/careers">Careers</a>
-                <a href="/contact">Contact</a>
-              </div>
-              <p className="footer-label mt-8">What we do</p>
-              <div className="mt-5 flex flex-col gap-3 text-sm">
-                {businesses.map((business) => (
-                  <a key={business.slug} href={`/businesses/${business.slug}`}>{business.title}</a>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="footer-label">Contact</p>
-              <div className="mt-5 flex flex-col gap-3 text-sm">
-                <a href={companyPhoneTel}>{companyPhoneDisplay}</a>
-                <a href={companyEmailMailto}>{companyEmail}</a>
-                <span>Kampala, Uganda</span>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-10 py-10 lg:grid-cols-12 lg:gap-8 lg:py-14">
+              <nav aria-label="Explore" className="lg:col-span-3">
+                <p className="footer-label">Explore</p>
+                <div className="mt-4 flex flex-col">
+                  {[
+                    ['About us', '/#about-us'],
+                    ['What we do', '/what-we-do'],
+                    ['Gallery', '/gallery'],
+                    ['Careers', '/careers'],
+                    ['Contact', '/contact'],
+                  ].map(([label, href]) => (
+                    <a key={href} href={href} className="inline-flex min-h-9 items-center text-sm transition-colors hover:text-[#d9bb7d]">{label}</a>
+                  ))}
+                </div>
+              </nav>
+              <nav aria-label="Businesses" className="lg:col-span-5">
+                <p className="footer-label">Businesses</p>
+                <div className="mt-4 flex flex-col">
+                  {businesses.map((business) => (
+                    <a key={business.slug} href={`/businesses/${business.slug}`} className="group inline-flex min-h-9 items-center gap-3 text-sm">
+                      <span className="w-5 shrink-0 text-[10px] tracking-[0.14em] text-[#d9bb7d]">{business.number}</span>
+                      <span className="transition-colors group-hover:text-[#d9bb7d]">{business.title}</span>
+                    </a>
+                  ))}
+                </div>
+              </nav>
+              <div className="col-span-2 border-t border-white/10 pt-8 lg:col-span-4 lg:border-t-0 lg:pt-0">
+                <p className="footer-label">Contact</p>
+                <div className="mt-4 flex flex-col gap-4">
+                  <a href={companyPhoneTel} className="text-base text-white transition-colors hover:text-[#d9bb7d]">{companyPhoneDisplay}</a>
+                  <a href={companyEmailMailto} className="break-all text-sm transition-colors hover:text-[#d9bb7d] sm:break-normal">{companyEmail}</a>
+                  <p className="text-sm">Kampala, Uganda</p>
+                </div>
               </div>
             </div>
           </div>
-          <div className={`mx-auto flex max-w-7xl flex-col gap-3 border-t border-white/10 px-5 py-6 text-[11px] md:flex-row md:justify-between lg:px-8 ${mobileDock ? 'max-sm:pb-36' : ''}`}>
-            <span>© 2026 Mudogwaluyiira Group of Companies. All rights reserved.</span>
-            <span>Privacy · Terms · Customer portal</span>
+          <div className="border-t border-white/10">
+            <div className={`mx-auto flex max-w-7xl flex-col gap-3 px-5 py-6 text-[11px] tracking-wide sm:flex-row sm:items-center sm:justify-between lg:px-8 ${mobileDock ? 'max-sm:pb-36' : ''}`}>
+              <span>© 2026 Mudogwaluyiira Group of Companies. All rights reserved.</span>
+              <a href="/account" className="font-semibold uppercase tracking-[0.16em] text-[#d9bb7d] transition-colors hover:text-white">Customer portal</a>
+            </div>
           </div>
         </footer>
         {requestOpen && <RequestModal onClose={() => setRequestOpen(false)} />}

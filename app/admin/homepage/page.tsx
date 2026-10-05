@@ -3,7 +3,13 @@ import { ContentManager } from '@/components/admin/content-manager'
 import { HeroImageForm } from '@/components/admin/hero-image-form'
 import { getHomepageHero, getManagedContent } from '@/lib/data'
 
-export default async function HomepageContentPage() {
+export default async function HomepageContentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ story?: string | string[] }>
+}) {
+  const story = (await searchParams).story
+  const focusId = typeof story === 'string' ? story : undefined
   const [items, hero] = await Promise.all([getManagedContent('activity'), getHomepageHero()])
 
   return (
@@ -19,7 +25,7 @@ export default async function HomepageContentPage() {
         }
       />
       <HeroImageForm image={hero.image} unavailable={hero.unavailable} />
-      <ContentManager kind="activity" items={items ?? []} unavailable={items === null} />
+      <ContentManager kind="activity" items={items ?? []} unavailable={items === null} focusId={focusId} />
     </>
   )
 }

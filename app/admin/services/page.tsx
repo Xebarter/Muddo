@@ -3,7 +3,13 @@ import { AdminPageHeader } from '@/components/admin/admin-page'
 import { ServiceManager } from '@/components/admin/service-manager'
 import { getAdminSnapshot, getManagedServices } from '@/lib/data'
 
-export default async function ServicesPage() {
+export default async function ServicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ service?: string | string[] }>
+}) {
+  const service = (await searchParams).service
+  const focusId = typeof service === 'string' ? service : undefined
   const [managed, snapshot] = await Promise.all([getManagedServices(), getAdminSnapshot()])
   const portfolio = snapshot?.portfolio ?? []
   const max = Math.max(...portfolio.map((item) => item.count), 1)
@@ -16,7 +22,7 @@ export default async function ServicesPage() {
         title="Services & projects"
         description="Add, update and remove customer services. A service without its own image uses the homepage image for that division."
       />
-      <ServiceManager services={managed?.services ?? []} customers={managed?.customers ?? []} homepageImages={managed?.homepageImages ?? {}} unavailable={managed === null} />
+      <ServiceManager services={managed?.services ?? []} customers={managed?.customers ?? []} homepageImages={managed?.homepageImages ?? {}} unavailable={managed === null} focusId={focusId} />
       {portfolio.length > 0 && (
         <section className="mt-8 border border-brand-line bg-brand-ink p-6 text-white">
           <div className="flex items-start justify-between">

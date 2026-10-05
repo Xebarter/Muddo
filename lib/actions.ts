@@ -3,7 +3,7 @@
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { employmentTypes, jobSlug, jobStatuses, type JobStatus } from '@/lib/careers'
-import { formatUgx, installmentStatuses, receiptStatuses, todayInKampala } from '@/lib/format'
+import { formatUgx, installmentStatuses, receiptStatuses, requestStatuses, todayInKampala } from '@/lib/format'
 import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestMobileMoneyPrompt } from '@/lib/mobile-money'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
 import { businesses } from '@/lib/businesses'
@@ -358,15 +358,89 @@ export async function deleteContactMessage(id: string) {
   return {}
 }
 
+function refreshRequests() {
+  revalidatePath('/admin/service-requests')
+  revalidatePath('/admin')
+}
+
+function requestFields(formData: FormData) {
+  const name = String(formData.get('full_name') ?? '').trim()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const phone = String(formData.get('phone') ?? '').trim()
+  const service = String(formData.get('service') ?? '').trim()
+  const location = String(formData.get('location') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+  const status = String(formData.get('status') ?? 'new')
+
+  if (name.length < 2) return { error: 'Enter a full name.' }
+  if (!paymentEmailPattern.test(email)) return { error: 'Enter a valid email.' }
+  if (phone && phone.replace(/\D/g, '').length < 9) return { error: 'Enter a phone number.' }
+  if (service.length < 2 || service.length > 80) return { error: 'Choose a service.' }
+  if (location.length > 120) return { error: 'Shorten the location.' }
+  if (description.length > 2000) return { error: 'Shorten the description.' }
+  if (!requestStatuses.includes(status as (typeof requestStatuses)[number])) return { error: 'Choose a status.' }
+
+  return { name, email, phone, service, location, description, status }
+}
+
+export async function saveServiceRequest(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const fields = requestFields(formData)
+  if ('error' in fields) return { error: fields.error }
+
+  const id = String(formData.get('id') ?? '')
+  const record = {
+    full_name: fields.name,
+    email: fields.email,
+    phone: fields.phone,
+    service: fields.service,
+    location: fields.location,
+    description: fields.description,
+    status: fields.status,
+  }
+
+  if (id) {
+    const { error } = await supabase.from('service_requests').update(record).eq('id', id)
+    if (error) return { error: 'The request could not be saved.' }
+    refreshRequests()
+    return {}
+  }
+
+  const { data, error } = await supabase.rpc('submit_service_request', {
+    p_full_name: fields.name,
+    p_phone: fields.phone,
+    p_email: fields.email,
+    p_service: fields.service,
+    p_location: fields.location,
+    p_description: fields.description,
+  })
+  if (error || !data) return { error: 'The request could not be saved.' }
+  if (fields.status !== 'new') {
+    const { error: statusError } = await supabase.from('service_requests').update({ status: fields.status }).eq('reference', data)
+    if (statusError) return { error: 'The request was saved, but the status could not be set.' }
+  }
+  refreshRequests()
+  return { reference: data as string }
+}
+
 export async function updateRequestStatus(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
-  const { error } = await supabase.from('service_requests').update({
-    status: String(formData.get('status') ?? 'new'),
-  }).eq('id', String(formData.get('id') ?? ''))
+  const status = String(formData.get('status') ?? '')
+  if (!requestStatuses.includes(status as (typeof requestStatuses)[number])) return { error: 'Choose a status.' }
+  const { error } = await supabase.from('service_requests').update({ status }).eq('id', String(formData.get('id') ?? ''))
   if (error) return { error: 'The request could not be updated.' }
-  revalidatePath('/admin/service-requests')
-  revalidatePath('/admin')
+  refreshRequests()
+  return {}
+}
+
+export async function deleteServiceRequest(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { error } = await supabase.from('service_requests').delete().eq('id', id)
+  if (error) return { error: 'The request could not be deleted.' }
+  refreshRequests()
   return {}
 }
 
@@ -439,18 +513,90 @@ export async function deleteService(id: string) {
   return {}
 }
 
-export async function createProgressUpdate(formData: FormData) {
+function progressFields(formData: FormData) {
+  const serviceId = String(formData.get('service_id') ?? '')
+  const title = String(formData.get('title') ?? '').trim()
+  const body = String(formData.get('body') ?? '').trim()
+  const progress = Number(formData.get('progress') ?? '')
+  const publishedOn = String(formData.get('published_on') ?? '').trim()
+
+  if (!serviceId) return { error: 'Choose a service.' }
+  if (title.length < 2 || title.length > 120) return { error: 'Enter an update title.' }
+  if (body.length > 2000) return { error: 'Shorten the update.' }
+  if (!Number.isInteger(progress) || progress < 0 || progress > 100) return { error: 'Progress is 0 to 100.' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(publishedOn)) return { error: 'Enter a published date.' }
+  return { serviceId, title, body, progress, publishedOn }
+}
+
+function refreshProgress() {
+  revalidatePath('/admin/progress')
+  revalidatePath('/admin')
+  revalidatePath('/admin/services')
+  revalidatePath('/account')
+  revalidatePath('/account/services')
+}
+
+async function syncLatestProgress(supabase: Awaited<ReturnType<typeof createClient>>, serviceId: string) {
+  const { data, error } = await supabase
+    .from('progress_updates')
+    .select('progress, published_on')
+    .eq('service_id', serviceId)
+    .order('published_on', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) return false
+  if (!data) return true
+  const { error: updateError } = await supabase.from('services').update({
+    progress: data.progress,
+    updated_on: data.published_on,
+  }).eq('id', serviceId)
+  return !updateError
+}
+
+export async function saveProgressUpdate(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
-  const { error } = await supabase.from('progress_updates').insert({
-    service_id: String(formData.get('service_id') ?? ''),
-    title: String(formData.get('title') ?? '').trim(),
-    body: String(formData.get('body') ?? '').trim(),
-    progress: Number(formData.get('progress') ?? 0) || 0,
-  })
-  if (error) return { error: 'The update could not be published.' }
-  revalidatePath('/admin/progress')
-  revalidatePath('/account')
+  const fields = progressFields(formData)
+  if ('error' in fields) return { error: fields.error }
+
+  const id = String(formData.get('id') ?? '')
+  const record = {
+    service_id: fields.serviceId,
+    title: fields.title,
+    body: fields.body,
+    progress: fields.progress,
+    published_on: fields.publishedOn,
+  }
+
+  let previousService = ''
+  if (id) {
+    const { data: existing, error: lookupError } = await supabase.from('progress_updates').select('service_id').eq('id', id).maybeSingle()
+    if (lookupError || !existing) return { error: 'The update could not be saved.' }
+    previousService = existing.service_id
+    const { error } = await supabase.from('progress_updates').update(record).eq('id', id)
+    if (error) return { error: error.code === '23503' ? 'Choose a service that still exists.' : 'The update could not be saved.' }
+  } else {
+    const { error } = await supabase.from('progress_updates').insert(record)
+    if (error) return { error: error.code === '23503' ? 'Choose a service that still exists.' : 'The update could not be published.' }
+  }
+
+  const synced = await syncLatestProgress(supabase, fields.serviceId)
+  const moved = previousService && previousService !== fields.serviceId ? await syncLatestProgress(supabase, previousService) : true
+  if (!synced || !moved) return { error: 'The update was saved, but the service progress could not be refreshed.' }
+  refreshProgress()
+  return {}
+}
+
+export async function deleteProgressUpdate(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { data: existing, error: lookupError } = await supabase.from('progress_updates').select('service_id').eq('id', id).maybeSingle()
+  if (lookupError || !existing) return { error: 'The update could not be deleted.' }
+  const { error } = await supabase.from('progress_updates').delete().eq('id', id)
+  if (error) return { error: 'The update could not be deleted.' }
+  const synced = await syncLatestProgress(supabase, existing.service_id)
+  if (!synced) return { error: 'The update was deleted, but the service progress could not be refreshed.' }
+  refreshProgress()
   return {}
 }
 

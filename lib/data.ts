@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import { businesses } from '@/lib/businesses'
+import { usesOfImage, type GalleryImageUse } from '@/lib/gallery-uses'
 import { applicationStatuses, jobStatuses, type ApplicationStatus, type JobStatus } from '@/lib/careers'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -21,6 +22,7 @@ import {
   installmentLabel,
   paymentLabel,
   requestLabel,
+  requestStatuses,
   requestTone,
   serviceLabel,
 } from '@/lib/format'
@@ -270,6 +272,50 @@ export const getGalleryPhotos = cache(async (): Promise<{ photos: GalleryPhoto[]
   }
 })
 
+export type AdminGalleryPhoto = {
+  id: string
+  source: 'story' | 'upload'
+  image: string
+  label: string
+  uses: GalleryImageUse[]
+}
+
+export const getAdminGallery = cache(async (): Promise<{ stories: AdminGalleryPhoto[]; uploads: AdminGalleryPhoto[] } | null> => {
+  const supabase = await createClient()
+  const [activities, uploads, services, hero] = await Promise.all([
+    supabase.from('homepage_activities').select('id, title, image_path, sort_order, status').order('sort_order'),
+    supabase.from('gallery_items').select('id, image_path, sort_order').order('sort_order'),
+    supabase.from('services').select('id, title, image_path'),
+    supabase.from('homepage_settings').select('hero_image_path').eq('id', 1).maybeSingle(),
+  ])
+  if (activities.error || uploads.error) return null
+  const records = {
+    hero: hero.data?.hero_image_path ?? '',
+    stories: (activities.data ?? []).flatMap((item) => (item.image_path ? [{ id: item.id, title: item.title, image: item.image_path }] : [])),
+    services: services.error ? [] : (services.data ?? []).flatMap((item) => (item.image_path?.trim() ? [{ id: item.id, title: item.title, image: item.image_path }] : [])),
+    uploads: (uploads.data ?? []).flatMap((item) => (item.image_path ? [{ id: item.id, image: item.image_path }] : [])),
+  }
+  return {
+    stories: (activities.data ?? []).flatMap((item) => {
+      if (item.status !== 'published' || !item.image_path) return []
+      return [{
+        id: item.id,
+        source: 'story' as const,
+        image: item.image_path,
+        label: item.title.trim() || 'What we do',
+        uses: usesOfImage(item.image_path, { source: 'story', id: item.id }, records),
+      }]
+    }),
+    uploads: records.uploads.map((item) => ({
+      id: item.id,
+      source: 'upload' as const,
+      image: item.image,
+      label: 'Gallery photo',
+      uses: usesOfImage(item.image, { source: 'upload', id: item.id }, records),
+    })),
+  }
+})
+
 export const getHomepageHero = cache(async (): Promise<{ image: string; unavailable: boolean }> => {
   const supabase = await createClient()
   const { data, error } = await supabase.from('homepage_settings').select('hero_image_path').eq('id', 1).maybeSingle()
@@ -423,6 +469,53 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
       completed: String(completed),
     },
   }
+})
+
+export type ServiceRequestRecord = {
+  id: string
+  reference: string
+  name: string
+  email: string
+  phone: string
+  service: string
+  location: string
+  description: string
+  date: string
+  status: string
+  rawStatus: (typeof requestStatuses)[number]
+  tone: 'gold' | 'green' | 'muted'
+}
+
+export const getServiceRequests = cache(async (): Promise<ServiceRequestRecord[] | null> => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select('id, reference, full_name, phone, email, service, location, description, status, created_at')
+    .order('created_at', { ascending: false })
+
+  if (error) return null
+  return (data ?? []).map((item) => {
+    const rawStatus = requestStatuses.includes(item.status as (typeof requestStatuses)[number])
+      ? item.status as ServiceRequestRecord['rawStatus']
+      : 'new'
+    return {
+      id: item.id,
+      reference: item.reference,
+      name: item.full_name,
+      email: item.email,
+      phone: item.phone,
+      service: item.service,
+      location: item.location,
+      description: item.description,
+      date: formatRequestWhen(item.created_at),
+      status: requestLabel(item.status),
+      rawStatus,
+      tone: requestTone(item.status),
+    }
+  })
 })
 
 export type LedgerInstallment = {
