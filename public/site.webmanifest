@@ -1,0 +1,23 @@
+{
+  "name": "Mudogwaluyiira Group of Companies",
+  "short_name": "Mudogwaluyiira",
+  "description": "Building businesses. Developing people. Creating opportunities across Uganda.",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "theme_color": "#15251f",
+  "background_color": "#f7f7f5",
+  "display": "standalone"
+}
