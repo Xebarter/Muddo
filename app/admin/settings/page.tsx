@@ -1,31 +1,23 @@
-import { AdminAction, AdminPageHeader } from '@/components/admin/admin-page'
+import { AdminPageHeader } from '@/components/admin/admin-page'
+import { SettingsForm } from '@/components/admin/settings-form'
+import { getAdminSnapshot } from '@/lib/data'
 
-const fields = [
-  { label: 'Workspace name', value: 'Mudogwaluyiira operations' },
-  { label: 'Primary contact', value: 'Admin Manager' },
-  { label: 'Role', value: 'Operations' },
-  { label: 'Notification email', value: 'operations@mudogwaluyiira.ug' },
-]
+export default async function SettingsPage() {
+  const snapshot = await getAdminSnapshot()
 
-export default function SettingsPage() {
   return (
     <>
       <AdminPageHeader
         eyebrow="Workspace"
         title="Settings"
         description="Review the operations workspace details used across the admin."
-        action={<AdminAction>Save changes</AdminAction>}
       />
-      <section className="mt-8 border border-brand-line bg-white">
-        <div className="divide-y divide-brand-line">
-          {fields.map((field) => (
-            <div key={field.label} className="flex flex-col gap-2 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">{field.label}</p>
-              <p className="text-sm font-semibold">{field.value}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <SettingsForm settings={snapshot?.settings ?? {
+        workspace_name: 'Mudogwaluyiira operations',
+        contact_name: 'Admin Manager',
+        role_label: 'Operations',
+        notification_email: 'operations@mudogwaluyiira.ug',
+      }} />
     </>
   )
 }

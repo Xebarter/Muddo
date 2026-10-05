@@ -5,6 +5,8 @@ import { ArrowRight, Check, CircleUser, Menu, MoveUpRight, X } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/site/design-system'
 import { businesses } from '@/lib/businesses'
+import { companyPhoneDisplay, companyPhoneTel } from '@/lib/contact'
+import { submitServiceRequest } from '@/lib/actions'
 
 const navItems = [
   { label: 'About Us', href: '/#about-us' },
@@ -41,7 +43,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   return (
     <RequestServiceContext.Provider value={() => setRequestOpen(true)}>
       <main className="min-h-screen bg-[#f7f7f5] text-[#15251f]">
-        <header className="absolute inset-x-0 top-0 z-20 border-b border-white/15 bg-[#15251f]/85 pt-[env(safe-area-inset-top)] text-white backdrop-blur-md">
+        <header className="fixed inset-x-0 top-0 z-20 border-b border-white/15 bg-[#15251f]/85 pt-[env(safe-area-inset-top)] text-white backdrop-blur-md">
           <div className="mx-auto flex h-16 w-full min-w-0 items-center justify-between gap-2 px-4 sm:h-20 sm:gap-4 sm:px-5 lg:px-8">
             <BrandMark href="/" className="text-white" />
             <nav className="hidden shrink-0 items-center gap-5 text-[11px] font-medium uppercase tracking-[0.16em] xl:flex">
@@ -98,7 +100,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
             <div>
               <p className="footer-label">Contact</p>
               <div className="mt-5 flex flex-col gap-3 text-sm">
-                <span>+256 700 000 000</span>
+                <a href={companyPhoneTel}>{companyPhoneDisplay}</a>
                 <span>hello@mudogwaluyiira.ug</span>
                 <span>Kampala, Uganda</span>
               </div>
@@ -216,7 +218,7 @@ function MobileMenu({ open, onClose, onRequest }: { open: boolean; onClose: () =
           <Button onClick={onRequest} className="mt-4 h-12 w-full rounded-none bg-[#c9a45c] text-[11px] font-bold uppercase tracking-[0.16em] text-[#15251f] hover:bg-[#dbbd7e]">
             Request a service <ArrowRight data-icon="inline-end" />
           </Button>
-          <p className="mt-5 text-[11px] leading-5 tracking-wide text-white/45">Kampala, Uganda<br />hello@mudogwaluyiira.ug</p>
+          <p className="mt-5 text-[11px] leading-5 tracking-wide text-white/45">Kampala, Uganda<br /><a href={companyPhoneTel} className="transition-colors hover:text-[#d9bb7d]">{companyPhoneDisplay}</a><br />hello@mudogwaluyiira.ug</p>
         </div>
       </aside>
     </div>
@@ -224,18 +226,19 @@ function MobileMenu({ open, onClose, onRequest }: { open: boolean; onClose: () =
 }
 
 function RequestModal({ onClose }: { onClose: () => void }) {
-  const [sent, setSent] = useState(false)
+  const [reference, setReference] = useState<string | null>(null)
+  const [error, setError] = useState('')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f1c17]/80 p-4">
       <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto bg-[#f7f7f5] p-7 text-[#15251f] md:p-10">
         <button onClick={onClose} className="absolute right-5 top-5" aria-label="Close request form"><X /></button>
-        {sent ? (
+        {reference ? (
           <div className="py-12 text-center">
             <BrandMark size="sm" className="mb-8 justify-center" />
             <div className="mx-auto flex size-14 items-center justify-center bg-[#dce9df] text-[#28704d]"><Check /></div>
             <h2 className="mt-6 font-serif text-3xl">Request received.</h2>
             <p className="mt-3 text-sm leading-6 text-[#65736d]">Thank you. Our team will be in touch shortly.</p>
-            <p className="mt-6 text-xs font-bold uppercase tracking-[0.15em] text-[#b48b45]">Reference: MG-REQ-0001</p>
+            <p className="mt-6 text-xs font-bold uppercase tracking-[0.15em] text-[#b48b45]">Reference: {reference}</p>
             <Button onClick={onClose} className="mt-8 rounded-none bg-[#15251f]">Close</Button>
           </div>
         ) : (
@@ -244,19 +247,31 @@ function RequestModal({ onClose }: { onClose: () => void }) {
             <p className="eyebrow">Start a conversation</p>
             <h2 className="mt-2 font-serif text-3xl">Request a service</h2>
             <p className="mt-3 text-sm text-[#65736d]">Tell us a little about what you need and the right team will follow up.</p>
-            <form onSubmit={(event) => { event.preventDefault(); setSent(true) }} className="mt-7 flex flex-col gap-4">
-              <input required placeholder="Full name" className="field" />
+            <form
+              action={async (formData) => {
+                const result = await submitServiceRequest(formData)
+                if (result.error || !result.reference) {
+                  setError(result.error ?? 'The request could not be saved.')
+                  return
+                }
+                setError('')
+                setReference(result.reference)
+              }}
+              className="mt-7 flex flex-col gap-4"
+            >
+              <input name="full_name" required placeholder="Full name" className="field" />
               <div className="grid gap-4 sm:grid-cols-2">
-                <input required type="tel" placeholder="Phone number" className="field" />
-                <input required type="email" placeholder="Email address" className="field" />
+                <input name="phone" required type="tel" placeholder="Phone number" className="field" />
+                <input name="email" required type="email" placeholder="Email address" className="field" />
               </div>
-              <select className="field">
-                <option>Service required</option>
-                {businesses.map((business) => <option key={business.slug}>{business.title}</option>)}
-                <option>Other</option>
+              <select name="service" required defaultValue="" className="field">
+                <option value="" disabled>Service required</option>
+                {businesses.map((business) => <option key={business.slug} value={business.title}>{business.title}</option>)}
+                <option value="Other">Other</option>
               </select>
-              <input placeholder="Location" className="field" />
-              <textarea placeholder="Description / requirements" rows={4} className="field resize-none" />
+              <input name="location" placeholder="Location" className="field" />
+              <textarea name="description" placeholder="Description / requirements" rows={4} className="field resize-none" />
+              {error && <p className="text-sm text-red-700">{error}</p>}
               <Button type="submit" className="mt-2 rounded-none bg-[#15251f] py-6 text-xs font-bold uppercase tracking-[0.16em]">Submit request <ArrowRight data-icon="inline-end" /></Button>
             </form>
           </>
