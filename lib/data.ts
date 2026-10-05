@@ -229,20 +229,29 @@ async function mobilePaymentsFor(supabase: Awaited<ReturnType<typeof createClien
 }
 
 export type PublicContent = {
-  activities: { title: string; text: string; category: string; slug: string; image: string }[]
-  gallery: { title: string; category: string; image: string }[]
+  activities: { id: string; title: string; text: string; category: string; slug: string; image: string }[]
+  gallery: { id: string; title: string; category: string; image: string }[]
 }
+
+const defaultHeroImage = '/mudogwaluyiira-hero.png'
+
+export const getHomepageHero = cache(async (): Promise<{ image: string; unavailable: boolean }> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('homepage_settings').select('hero_image_path').eq('id', 1).maybeSingle()
+  if (error) return { image: defaultHeroImage, unavailable: true }
+  return { image: data?.hero_image_path || defaultHeroImage, unavailable: false }
+})
 
 export const getPublicContent = cache(async (): Promise<PublicContent | null> => {
   const supabase = await createClient()
   const [{ data: activities, error: activityError }, { data: gallery, error: galleryError }] = await Promise.all([
-    supabase.from('homepage_activities').select('slug, category, title, body, image_path, sort_order').eq('status', 'published').order('sort_order'),
-    supabase.from('gallery_items').select('title, category, image_path, sort_order').eq('status', 'published').order('sort_order'),
+    supabase.from('homepage_activities').select('id, slug, category, title, body, image_path, sort_order').eq('status', 'published').order('sort_order'),
+    supabase.from('gallery_items').select('id, title, category, image_path, sort_order').eq('status', 'published').order('sort_order'),
   ])
   if (activityError || galleryError) return null
   return {
-    activities: activities.map((item) => ({ title: item.title, text: item.body, category: item.category, slug: item.slug, image: item.image_path })),
-    gallery: (gallery ?? []).map((item) => ({ title: item.title, category: item.category, image: item.image_path })),
+    activities: activities.map((item) => ({ id: item.id, title: item.title, text: item.body, category: item.category, slug: item.slug, image: item.image_path })),
+    gallery: (gallery ?? []).map((item) => ({ id: item.id, title: item.title, category: item.category, image: item.image_path })),
   }
 })
 

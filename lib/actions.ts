@@ -484,6 +484,20 @@ export async function moveContentItem(kind: 'activity' | 'gallery', id: string, 
   return {}
 }
 
+export async function saveHeroImage(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const uploaded = await storeContentImage(supabase, formData.get('image'))
+  if (uploaded.error) return { error: uploaded.error }
+  const imagePath = String(formData.get('image_path') ?? '').trim()
+  const image = uploaded.url || imagePath || '/mudogwaluyiira-hero.png'
+  const { error } = await supabase.from('homepage_settings').upsert({ id: 1, hero_image_path: image })
+  if (error) return { error: 'The hero image could not be saved. Run the Supabase script, then try again.' }
+  revalidatePath('/')
+  revalidatePath('/admin/homepage')
+  return {}
+}
+
 export async function saveWorkspaceSettings(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
