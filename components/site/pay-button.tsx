@@ -139,7 +139,7 @@ function PayDialog({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <>
-            <h2 id="home-pay-title" className="font-serif text-3xl tracking-[-0.03em]">Pay</h2>
+            <h2 id="home-pay-title" className="font-serif text-3xl tracking-[-0.03em]">Pay to MuddoGroup</h2>
             <form onSubmit={submit} className="mt-7 flex flex-col gap-4" noValidate>
               <label className="block">
                 <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65736d]">Amount</span>
