@@ -11,6 +11,21 @@ import { createClient } from '@/lib/supabase/server'
 
 const paymentEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+export async function submitContactMessage(formData: FormData) {
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('submit_contact_message', {
+    p_full_name: String(formData.get('full_name') ?? ''),
+    p_email: String(formData.get('email') ?? ''),
+    p_phone: String(formData.get('phone') ?? ''),
+    p_subject: String(formData.get('subject') ?? ''),
+    p_message: String(formData.get('message') ?? ''),
+  })
+  if (error) return { error: 'The message could not be sent. Run the latest Supabase script, then try again.' }
+  revalidatePath('/admin/messages')
+  revalidatePath('/admin')
+  return {}
+}
+
 export async function submitServiceRequest(formData: FormData) {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('submit_service_request', {
@@ -320,6 +335,28 @@ export async function createCustomer(formData: FormData) {
   return {}
 }
 
+export async function updateContactMessage(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const status = String(formData.get('status') ?? '')
+  if (status !== 'new' && status !== 'read' && status !== 'replied') return { error: 'Choose a status.' }
+  const { error } = await supabase.from('contact_messages').update({ status }).eq('id', String(formData.get('id') ?? ''))
+  if (error) return { error: 'The message could not be updated. Run the latest Supabase script, then try again.' }
+  revalidatePath('/admin/messages')
+  revalidatePath('/admin')
+  return {}
+}
+
+export async function deleteContactMessage(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { error } = await supabase.from('contact_messages').delete().eq('id', id)
+  if (error) return { error: 'The message could not be deleted.' }
+  revalidatePath('/admin/messages')
+  revalidatePath('/admin')
+  return {}
+}
+
 export async function updateRequestStatus(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
@@ -332,24 +369,72 @@ export async function updateRequestStatus(formData: FormData) {
   return {}
 }
 
-export async function createService(formData: FormData) {
+const serviceStatuses = ['planned', 'in_progress', 'completed', 'on_hold'] as const
+
+export async function saveService(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
+
+  const id = String(formData.get('id') ?? '')
+  const customerId = String(formData.get('customer_id') ?? '')
+  const title = String(formData.get('title') ?? '').trim()
+  const division = businesses.find((item) => item.slug === String(formData.get('division') ?? ''))
+  const location = String(formData.get('location') ?? '').trim()
+  const stage = String(formData.get('stage') ?? '').trim()
+  const progress = Number(formData.get('progress') ?? 0)
+  const contractValue = Number(formData.get('contract_value') ?? 0)
+  const status = String(formData.get('status') ?? '')
+  const expected = String(formData.get('expected_completion') ?? '').trim()
+  const image = String(formData.get('image_path') ?? '').trim()
+
+  if (!customerId) return { error: 'Choose a customer.' }
+  if (!division) return { error: 'Choose a division.' }
+  if (title.length < 2) return { error: 'Enter a title.' }
+  if (!Number.isInteger(progress) || progress < 0 || progress > 100) return { error: 'Progress is 0 to 100.' }
+  if (!Number.isSafeInteger(contractValue) || contractValue < 0) return { error: 'Enter a contract value.' }
+  if (!serviceStatuses.includes(status as (typeof serviceStatuses)[number])) return { error: 'Choose a status.' }
+  if (expected && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return { error: 'Enter a completion date.' }
+
+  const record = {
+    customer_id: customerId,
+    title,
+    division: division.title,
+    location,
+    progress,
+    stage: stage || 'Not started',
+    expected_completion: expected || null,
+    status,
+    contract_value: contractValue,
+    image_path: image,
+    updated_on: new Date().toISOString().slice(0, 10),
+  }
+
+  if (id) {
+    const { error } = await supabase.from('services').update(record).eq('id', id)
+    if (error) return { error: 'The service could not be saved. Run 0003services-image.sql, then try again.' }
+    revalidatePath('/admin/services')
+    revalidatePath('/admin')
+    revalidatePath('/account')
+    return { id }
+  }
+
   const reference = `MG-SVC-${Date.now().toString().slice(-6)}`
-  const { error } = await supabase.from('services').insert({
-    reference,
-    customer_id: String(formData.get('customer_id') ?? ''),
-    title: String(formData.get('title') ?? '').trim(),
-    division: String(formData.get('division') ?? '').trim(),
-    location: String(formData.get('location') ?? '').trim(),
-    progress: 0,
-    stage: 'Not started',
-    status: 'planned',
-    contract_value: Number(formData.get('contract_value') ?? 0) || 0,
-  })
-  if (error) return { error: 'The service could not be created.' }
+  const { data, error } = await supabase.from('services').insert({ ...record, reference }).select('id').single()
+  if (error || !data) return { error: 'The service could not be created. Run 0003services-image.sql, then try again.' }
   revalidatePath('/admin/services')
   revalidatePath('/admin')
+  revalidatePath('/account')
+  return { id: data.id as string }
+}
+
+export async function deleteService(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { error } = await supabase.from('services').delete().eq('id', id)
+  if (error) return { error: 'The service could not be deleted.' }
+  revalidatePath('/admin/services')
+  revalidatePath('/admin')
+  revalidatePath('/account')
   return {}
 }
 
@@ -438,14 +523,15 @@ export async function saveContentItem(formData: FormData) {
   if (id) {
     const { error } = await supabase.from(contentTable(kind)).update(record).eq('id', id)
     if (error) return { error: 'The record could not be saved.' }
-  } else {
-    const { count } = await supabase.from(contentTable(kind)).select('id', { count: 'exact', head: true })
-    const { error } = await supabase.from(contentTable(kind)).insert({ ...record, sort_order: (count ?? 0) + 1 })
-    if (error) return { error: 'The record could not be created.' }
+    refreshContent()
+    return { id }
   }
 
+  const { count } = await supabase.from(contentTable(kind)).select('id', { count: 'exact', head: true })
+  const { data, error } = await supabase.from(contentTable(kind)).insert({ ...record, sort_order: (count ?? 0) + 1 }).select('id').single()
+  if (error || !data) return { error: 'The record could not be created.' }
   refreshContent()
-  return {}
+  return { id: data.id }
 }
 
 export async function deleteContentItem(kind: 'activity' | 'gallery', id: string) {

@@ -5,7 +5,7 @@ import { ArrowRight, Check, CircleUser, Menu, MoveUpRight, X } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/site/design-system'
 import { businesses } from '@/lib/businesses'
-import { companyPhoneDisplay, companyPhoneTel } from '@/lib/contact'
+import { companyEmail, companyEmailMailto, companyPhoneDisplay, companyPhoneTel } from '@/lib/contact'
 import { submitServiceRequest } from '@/lib/actions'
 
 const navItems = [
@@ -14,7 +14,7 @@ const navItems = [
   { label: 'Projects', href: '/#projects' },
   { label: 'News', href: '/#news' },
   { label: 'Careers', href: '/#careers' },
-  { label: 'Contact', href: '/#contact' },
+  { label: 'Contact', href: '/contact' },
 ]
 
 const RequestServiceContext = createContext<() => void>(() => {})
@@ -36,7 +36,7 @@ export function RequestServiceButton({
   )
 }
 
-export function SiteChrome({ children }: { children: ReactNode }) {
+export function SiteChrome({ children, mobileDock = false }: { children: ReactNode; mobileDock?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [requestOpen, setRequestOpen] = useState(false)
 
@@ -88,7 +88,7 @@ export function SiteChrome({ children }: { children: ReactNode }) {
               <div className="mt-5 flex flex-col gap-3 text-sm">
                 <a href="/#about-us">About us</a>
                 <a href="/#projects">Projects</a>
-                <a href="/#contact">Contact</a>
+                <a href="/contact">Contact</a>
               </div>
               <p className="footer-label mt-8">Businesses</p>
               <div className="mt-5 flex flex-col gap-3 text-sm">
@@ -101,12 +101,12 @@ export function SiteChrome({ children }: { children: ReactNode }) {
               <p className="footer-label">Contact</p>
               <div className="mt-5 flex flex-col gap-3 text-sm">
                 <a href={companyPhoneTel}>{companyPhoneDisplay}</a>
-                <span>hello@mudogwaluyiira.ug</span>
+                <a href={companyEmailMailto}>{companyEmail}</a>
                 <span>Kampala, Uganda</span>
               </div>
             </div>
           </div>
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 border-t border-white/10 px-5 py-6 text-[11px] md:flex-row md:justify-between lg:px-8">
+          <div className={`mx-auto flex max-w-7xl flex-col gap-3 border-t border-white/10 px-5 py-6 text-[11px] md:flex-row md:justify-between lg:px-8 ${mobileDock ? 'max-sm:pb-36' : ''}`}>
             <span>© 2026 Mudogwaluyiira Group of Companies. All rights reserved.</span>
             <span>Privacy · Terms · Customer portal</span>
           </div>
@@ -218,7 +218,7 @@ function MobileMenu({ open, onClose, onRequest }: { open: boolean; onClose: () =
           <Button onClick={onRequest} className="mt-4 h-12 w-full rounded-none bg-[#c9a45c] text-[11px] font-bold uppercase tracking-[0.16em] text-[#15251f] hover:bg-[#dbbd7e]">
             Request a service <ArrowRight data-icon="inline-end" />
           </Button>
-          <p className="mt-5 text-[11px] leading-5 tracking-wide text-white/45">Kampala, Uganda<br /><a href={companyPhoneTel} className="transition-colors hover:text-[#d9bb7d]">{companyPhoneDisplay}</a><br />hello@mudogwaluyiira.ug</p>
+          <p className="mt-5 text-[11px] leading-5 tracking-wide text-white/45">Kampala, Uganda<br /><a href={companyPhoneTel} className="transition-colors hover:text-[#d9bb7d]">{companyPhoneDisplay}</a><br /><a href={companyEmailMailto} className="transition-colors hover:text-[#d9bb7d]">{companyEmail}</a></p>
         </div>
       </aside>
     </div>

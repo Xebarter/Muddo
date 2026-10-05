@@ -1,4 +1,5 @@
 import { cache } from 'react'
+import { businesses } from '@/lib/businesses'
 import { createClient } from '@/lib/supabase/server'
 import {
   customer,
@@ -375,7 +376,7 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
       workspace_name: 'Mudogwaluyiira operations',
       contact_name: 'Admin Manager',
       role_label: 'Operations',
-      notification_email: 'operations@mudogwaluyiira.ug',
+      notification_email: 'muddogwaluyiiragroup@gmail.com',
     },
     metrics: {
       customers: String((customers.data ?? []).length),
@@ -388,6 +389,44 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
       completed: String(completed),
     },
   }
+})
+
+export type ContactMessage = {
+  id: string
+  name: string
+  email: string
+  phone: string
+  subject: string
+  message: string
+  date: string
+  status: string
+  rawStatus: 'new' | 'read' | 'replied'
+  tone: 'gold' | 'green' | 'muted'
+}
+
+export const getContactMessages = cache(async (): Promise<ContactMessage[] | null> => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+
+  const { data, error } = await supabase
+    .from('contact_messages')
+    .select('id, full_name, email, phone, subject, message, status, created_at')
+    .order('created_at', { ascending: false })
+
+  if (error) return null
+  return (data ?? []).map((item) => ({
+    id: item.id,
+    name: item.full_name,
+    email: item.email,
+    phone: item.phone,
+    subject: item.subject,
+    message: item.message,
+    date: formatRequestWhen(item.created_at),
+    status: item.status === 'replied' ? 'Replied' : item.status === 'read' ? 'Read' : 'New',
+    rawStatus: item.status === 'replied' || item.status === 'read' ? item.status : 'new',
+    tone: item.status === 'replied' ? 'green' as const : item.status === 'read' ? 'muted' as const : 'gold' as const,
+  }))
 })
 
 export type ManagedContent = {
@@ -418,4 +457,79 @@ export async function getManagedContent(kind: 'activity' | 'gallery'): Promise<M
     sortOrder: item.sort_order,
     status: item.status === 'draft' ? 'draft' : 'published',
   }))
+}
+
+export type ManagedService = {
+  id: string
+  reference: string
+  customerId: string
+  customerName: string
+  title: string
+  division: string
+  location: string
+  progress: number
+  stage: string
+  expectedCompletion: string
+  status: 'planned' | 'in_progress' | 'completed' | 'on_hold'
+  contractValue: number
+  image: string
+  displayImage: string
+  usingHomepageImage: boolean
+}
+
+const serviceStatusList = ['planned', 'in_progress', 'completed', 'on_hold'] as const
+
+function homepageImageFor(
+  division: string,
+  activities: { slug: string; category: string; image_path: string; status: string }[],
+  hero: string,
+) {
+  const business = businesses.find((item) => item.title.toLowerCase() === division.toLowerCase() || item.slug === division)
+  const related = activities.filter((item) => {
+    if (!item.image_path) return false
+    if (business) return item.slug === business.slug || item.category.toLowerCase() === business.title.toLowerCase()
+    return item.category.toLowerCase() === division.toLowerCase()
+  })
+  const published = related.find((item) => item.status === 'published')
+  return published?.image_path || related[0]?.image_path || hero || defaultHeroImage
+}
+
+export async function getManagedServices(): Promise<{ services: ManagedService[]; customers: { id: string; name: string }[]; homepageImages: Record<string, string> } | null> {
+  const supabase = await createClient()
+  const [services, customers, activities, hero] = await Promise.all([
+    supabase.from('services').select('id, reference, customer_id, title, division, location, progress, stage, expected_completion, status, contract_value, image_path').order('created_at', { ascending: false }),
+    supabase.from('customers').select('id, full_name').order('full_name'),
+    supabase.from('homepage_activities').select('slug, category, image_path, status, sort_order').order('sort_order'),
+    supabase.from('homepage_settings').select('hero_image_path').eq('id', 1).maybeSingle(),
+  ])
+  if (services.error || customers.error) return null
+  const names = new Map((customers.data ?? []).map((item) => [item.id, item.full_name]))
+  const stories = activities.error ? [] : (activities.data ?? [])
+  const heroImage = hero.data?.hero_image_path || defaultHeroImage
+  const homepageImages = Object.fromEntries(businesses.map((business) => [business.slug, homepageImageFor(business.title, stories, heroImage)]))
+  return {
+    customers: (customers.data ?? []).map((item) => ({ id: item.id, name: item.full_name })),
+    homepageImages,
+    services: (services.data ?? []).map((item) => {
+      const own = item.image_path?.trim() ?? ''
+      const status = serviceStatusList.includes(item.status as (typeof serviceStatusList)[number]) ? item.status as ManagedService['status'] : 'planned'
+      return {
+        id: item.id,
+        reference: item.reference,
+        customerId: item.customer_id,
+        customerName: names.get(item.customer_id) ?? 'Customer',
+        title: item.title,
+        division: item.division,
+        location: item.location,
+        progress: item.progress,
+        stage: item.stage,
+        expectedCompletion: item.expected_completion ?? '',
+        status,
+        contractValue: Number(item.contract_value),
+        image: own,
+        displayImage: own || homepageImageFor(item.division, stories, heroImage),
+        usingHomepageImage: !own,
+      }
+    }),
+  }
 }

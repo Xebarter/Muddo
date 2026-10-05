@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FileText,
   Images,
+  Mail,
   LayoutDashboard,
   Menu,
   Settings,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react'
 import { BrandMark } from '@/components/site/design-system'
 import { SignOutButton } from '@/components/auth/sign-out-button'
+import { AdminProgressProvider } from '@/components/admin/save-progress'
 
 const navigation = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -30,6 +32,7 @@ const navigation = [
   { label: 'Documents', href: '/admin/documents', icon: FileText },
   { label: 'Homepage content', href: '/admin/homepage', icon: LayoutDashboard },
   { label: 'Gallery', href: '/admin/gallery', icon: Images },
+  { label: 'Messages', href: '/admin/messages', icon: Mail },
 ]
 
 const settingsItem = { label: 'Settings', href: '/admin/settings', icon: Settings }
@@ -42,11 +45,13 @@ function isCurrent(pathname: string, href: string) {
 export function AdminShell({
   children,
   requestCount = '08',
+  messageCount,
   contactName = 'Admin Manager',
   roleLabel = 'Operations',
 }: {
   children: React.ReactNode
   requestCount?: string
+  messageCount?: string
   contactName?: string
   roleLabel?: string
 }) {
@@ -66,6 +71,7 @@ export function AdminShell({
   }, [pathname])
 
   return (
+    <AdminProgressProvider>
     <main className="min-h-screen bg-brand-surface text-brand-ink">
       <header className="sticky top-0 z-30 border-b border-brand-line bg-white/95 backdrop-blur-md">
         <div className="flex h-20 items-center justify-between gap-4 px-5 md:px-8">
@@ -102,18 +108,23 @@ export function AdminShell({
 
       <div className="flex">
         <aside className="sticky top-20 hidden h-[calc(100dvh-5rem)] w-72 shrink-0 flex-col border-r border-white/10 bg-[#101c17] text-white md:flex">
-          <SidebarFrame pathname={pathname} requestCount={requestCount} showIntro />
+          <SidebarFrame pathname={pathname} requestCount={requestCount} messageCount={messageCount} showIntro />
         </aside>
         <section className="min-w-0 flex-1 px-5 py-8 md:px-10 md:py-12">{children}</section>
       </div>
 
-      <AdminDrawer open={menuOpen} onClose={closeMenu} onNavigate={dismissMenu} pathname={pathname} requestCount={requestCount} />
+      <AdminDrawer open={menuOpen} onClose={closeMenu} onNavigate={dismissMenu} pathname={pathname} requestCount={requestCount} messageCount={messageCount} />
     </main>
+    </AdminProgressProvider>
   )
 }
 
-function SidebarFrame({ pathname, requestCount, onNavigate, motion, showIntro = false }: { pathname: string; requestCount: string; onNavigate?: () => void; motion?: boolean; showIntro?: boolean }) {
-  const links = navigation.map((item) => item.href === '/admin/service-requests' ? { ...item, count: requestCount } : item)
+function SidebarFrame({ pathname, requestCount, messageCount, onNavigate, motion, showIntro = false }: { pathname: string; requestCount: string; messageCount?: string; onNavigate?: () => void; motion?: boolean; showIntro?: boolean }) {
+  const links = navigation.map((item) => {
+    if (item.href === '/admin/service-requests') return { ...item, count: requestCount }
+    if (item.href === '/admin/messages' && messageCount) return { ...item, count: messageCount }
+    return item
+  })
   return (
     <>
       {showIntro && (
@@ -172,7 +183,7 @@ function NavLink({
   )
 }
 
-function AdminDrawer({ open, onClose, onNavigate, pathname, requestCount }: { open: boolean; onClose: () => void; onNavigate: () => void; pathname: string; requestCount: string }) {
+function AdminDrawer({ open, onClose, onNavigate, pathname, requestCount, messageCount }: { open: boolean; onClose: () => void; onNavigate: () => void; pathname: string; requestCount: string; messageCount?: string }) {
   const panelRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -245,7 +256,7 @@ function AdminDrawer({ open, onClose, onNavigate, pathname, requestCount }: { op
             <X strokeWidth={1.5} />
           </button>
         </div>
-        <SidebarFrame pathname={pathname} requestCount={requestCount} onNavigate={onNavigate} motion={open} />
+        <SidebarFrame pathname={pathname} requestCount={requestCount} messageCount={messageCount} onNavigate={onNavigate} motion={open} />
       </aside>
     </div>
   )

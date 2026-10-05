@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 import { saveWorkspaceSettings } from '@/lib/actions'
 
 export function SettingsForm({
@@ -10,11 +11,12 @@ export function SettingsForm({
 }) {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const { pending, track } = useAdminProgress()
 
   return (
     <form
       action={async (formData) => {
-        const result = await saveWorkspaceSettings(formData)
+        const result = await track((report) => finishSave(report, () => saveWorkspaceSettings(formData)))
         if (result.error) {
           setError(result.error)
           setSaved(false)
@@ -33,7 +35,7 @@ export function SettingsForm({
       </div>
       <div className="flex items-center justify-between border-t border-brand-line px-6 py-5">
         <p className="text-xs text-brand-muted">{error || (saved ? 'Settings saved.' : 'These details identify the operations workspace.')}</p>
-        <button className="h-12 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white">Save changes</button>
+        <button disabled={pending} className="h-12 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white disabled:opacity-50">Save changes</button>
       </div>
     </form>
   )

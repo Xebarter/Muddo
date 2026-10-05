@@ -1,7 +1,6 @@
 -- Mudogwaluyiira Group — Supabase setup
--- Run this entire script in the Supabase SQL editor.
+-- Run the numbered scripts in this folder in order, starting with this file.
 -- It is safe to run again: existing rows are left in place.
--- Re-run it after updates so new tables, including mobile payments and the homepage hero, exist.
 --
 -- Demo sign-in after the script finishes (change these passwords in production):
 --   Customer  john.doe@example.com       / MuddoDemo2026!
@@ -180,11 +179,6 @@ create table if not exists public.workspace_settings (
   role_label text not null,
   notification_email text not null,
   updated_at timestamptz not null default now()
-);
-
-create table if not exists public.homepage_settings (
-  id integer primary key default 1 check (id = 1),
-  hero_image_path text not null default '/mudogwaluyiira-hero.png'
 );
 
 create sequence if not exists public.request_number_seq start 8;
@@ -378,7 +372,6 @@ alter table public.notifications enable row level security;
 alter table public.homepage_activities enable row level security;
 alter table public.gallery_items enable row level security;
 alter table public.workspace_settings enable row level security;
-alter table public.homepage_settings enable row level security;
 
 drop policy if exists "read own profile" on public.profiles;
 create policy "read own profile" on public.profiles
@@ -563,20 +556,9 @@ for all to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
-drop policy if exists "public homepage settings" on public.homepage_settings;
-create policy "public homepage settings" on public.homepage_settings
-for select to anon, authenticated
-using (true);
-
-drop policy if exists "admin homepage settings" on public.homepage_settings;
-create policy "admin homepage settings" on public.homepage_settings
-for all to authenticated
-using (public.is_admin())
-with check (public.is_admin());
-
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
-grant select on public.homepage_activities, public.gallery_items, public.homepage_settings to anon;
+grant select on public.homepage_activities, public.gallery_items to anon;
 grant usage, select on sequence public.request_number_seq to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -826,11 +808,7 @@ from (
 where not exists (select 1 from public.gallery_items existing where existing.title = v.title);
 
 insert into public.workspace_settings (id, workspace_name, contact_name, role_label, notification_email)
-values (1, 'Mudogwaluyiira operations', 'Admin Manager', 'Operations', 'operations@mudogwaluyiira.ug')
-on conflict (id) do nothing;
-
-insert into public.homepage_settings (id, hero_image_path)
-values (1, '/mudogwaluyiira-hero.png')
+values (1, 'Mudogwaluyiira operations', 'Admin Manager', 'Operations', 'muddogwaluyiiragroup@gmail.com')
 on conflict (id) do nothing;
 
 insert into storage.buckets (id, name, public)

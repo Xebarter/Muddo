@@ -16,7 +16,7 @@ export default async function SettingsPage() {
         workspace_name: 'Mudogwaluyiira operations',
         contact_name: 'Admin Manager',
         role_label: 'Operations',
-        notification_email: 'operations@mudogwaluyiira.ug',
+        notification_email: 'muddogwaluyiiragroup@gmail.com',
       }} />
     </>
   )

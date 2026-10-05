@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 
 export function SimpleCreateForm({
   action,
@@ -15,11 +16,12 @@ export function SimpleCreateForm({
 }) {
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const { pending, track } = useAdminProgress()
 
   return (
     <form
       action={async (formData) => {
-        const result = await action(formData)
+        const result = await track((report) => finishSave(report, () => action(formData)))
         if (result?.error) {
           setError(result.error)
           setDone(false)
@@ -42,7 +44,7 @@ export function SimpleCreateForm({
       ))}
       {children}
       <div className="flex items-end">
-        <button className="h-11 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">{submitLabel}</button>
+        <button disabled={pending} className="h-11 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90 disabled:opacity-50">{submitLabel}</button>
       </div>
       {error && <p className="text-sm text-red-700 sm:col-span-2">{error}</p>}
       {done && <p className="text-sm text-brand-muted sm:col-span-2">Saved.</p>}

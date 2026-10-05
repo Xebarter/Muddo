@@ -1,0 +1,13 @@
+---
+description: Numbered SQL files for Supabase changes
+alwaysApply: true
+---
+
+# SQL files
+
+SQL scripts live in `supabase/` and run in numeric order in the Supabase SQL editor.
+
+- The base script is `supabase/0001schem.sql`. Do not add new schema changes to it.
+- Each new SQL change is a new file. The next number is one higher than the highest existing file, zero-padded to 4 digits, then a short name: `0002homepage-hero.sql`, `0003payments.sql`.
+- New files are safe to run again: `create ... if not exists`, `drop policy if exists`, and `on conflict do nothing`.
+- Grant access on any new table inside that same file. Grants in `0001schem.sql` do not cover tables created later.
