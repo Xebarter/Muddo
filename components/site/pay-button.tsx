@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Check, Smartphone, X } from 'lucide-react'
 import { refreshOpenPayment, startOpenPayment } from '@/lib/actions'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
+import { saveReceipt } from '@/lib/save-receipt'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -15,6 +16,7 @@ type OpenPayment = {
   method: string
   created: boolean
   status: 'pending' | 'paid' | 'failed'
+  receiptToken?: string
 }
 
 export function PayButton() {
@@ -51,6 +53,7 @@ function PayDialog({ onClose }: { onClose: () => void }) {
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<OpenPayment | null>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const savedReceipt = useRef(false)
 
   useEffect(() => {
     if (networkTouched) return
@@ -79,13 +82,19 @@ function PayDialog({ onClose }: { onClose: () => void }) {
       attempts += 1
       const next = await refreshOpenPayment(result.reference)
       if ('status' in next && (next.status === 'paid' || next.status === 'failed')) {
-        setResult({ ...result, status: next.status })
+        setResult({ ...result, status: next.status, receiptToken: 'receiptToken' in next ? next.receiptToken : undefined })
         window.clearInterval(timer)
       } else if (attempts >= 12) {
         window.clearInterval(timer)
       }
     }, 4000)
     return () => window.clearInterval(timer)
+  }, [result])
+
+  useEffect(() => {
+    if (result?.status !== 'paid' || !result.receiptToken || savedReceipt.current) return
+    savedReceipt.current = true
+    saveReceipt(result.reference, result.receiptToken)
   }, [result])
 
   const submit = async (event: FormEvent) => {
@@ -130,12 +139,15 @@ function PayDialog({ onClose }: { onClose: () => void }) {
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#65736d]">
               {result.status === 'pending' && `Approve the prompt on ${result.phone}. `}
-              {result.status === 'paid' && `${result.amount} paid. `}
+              {result.status === 'paid' && `${result.amount} paid. Your receipt is downloading. `}
               {result.status === 'failed' && 'Try again. '}
               {result.created ? `Account ready for ${result.email}.` : `Saved to ${result.email}.`}
             </p>
             <p className="mt-6 text-xs font-bold uppercase tracking-[0.15em] text-[#b48b45]">{result.reference} · {result.amount}</p>
-            <button type="button" onClick={onClose} className="mt-8 inline-flex h-12 w-full items-center justify-center bg-[#15251f] text-xs font-bold uppercase tracking-[0.16em] text-white hover:bg-[#263f35]">Close</button>
+            {result.status === 'paid' && (
+              <button type="button" onClick={() => saveReceipt(result.reference, result.receiptToken)} className="mt-8 inline-flex h-12 w-full items-center justify-center bg-[#c9a45c] text-xs font-bold uppercase tracking-[0.16em] text-[#15251f] hover:bg-[#dbbd7e]">Download receipt</button>
+            )}
+            <button type="button" onClick={onClose} className={`${result.status === 'paid' ? 'mt-3' : 'mt-8'} inline-flex h-12 w-full items-center justify-center bg-[#15251f] text-xs font-bold uppercase tracking-[0.16em] text-white hover:bg-[#263f35]`}>Close</button>
           </div>
         ) : (
           <>

@@ -8,7 +8,7 @@ export default function PaymentSuccessPage() {
     <PaymentResult
       eyebrow="Mobile Money"
       title="Paid."
-      text="Confirmed."
+      text="Your payment is confirmed. The receipt downloads with the payment, and you can get it again from your profile after you sign in."
     />
   )
 }

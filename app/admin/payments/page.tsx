@@ -10,7 +10,7 @@ export default async function PaymentsPage() {
       <AdminPageHeader
         eyebrow="Finance"
         title="Payments"
-        description="Record what each service owes, confirm what has been paid, and keep every Mobile Money receipt in one ledger."
+        description="See what is still owed, what has been collected, and what has been paid out."
       />
       <PaymentDesk ledger={ledger} />
     </>

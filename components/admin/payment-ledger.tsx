@@ -1,20 +1,25 @@
 'use client'
 
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 import { StatusBadge } from '@/components/site/design-system'
-import { deleteInstallment, deleteMobilePayment, saveInstallment, saveMobilePayment } from '@/lib/actions'
+import { deleteInstallment, deleteMobilePayment, refreshDisbursement, saveInstallment, saveMobilePayment, sendDisbursement } from '@/lib/actions'
+import { formatUgandaPhone } from '@/lib/contact'
 import { formatLongDate, formatUgx, installmentLabel, installmentStatuses, receiptStatuses } from '@/lib/format'
-import type { LedgerInstallment, LedgerReceipt, PaymentLedgerData } from '@/lib/data'
+import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
+import type { LedgerDisbursement, LedgerInstallment, LedgerReceipt, PaymentLedgerData } from '@/lib/data'
 
 const methods = ['Mobile Money', 'Bank transfer', 'Cash', 'Cheque']
 
-const fieldClass = 'h-11 border border-brand-line bg-white px-3 text-sm font-medium normal-case tracking-normal text-brand-ink outline-none focus:border-brand-ink'
+const fieldClass = 'h-12 w-full border border-brand-line bg-white px-3 text-base font-medium normal-case tracking-normal text-brand-ink outline-none focus:border-brand-ink md:h-11 md:text-sm'
+
+type DeskTab = 'installments' | 'receipts' | 'disbursements'
 
 export function PaymentDesk({ ledger }: { ledger: PaymentLedgerData | null }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [tab, setTab] = useState<DeskTab>('installments')
   const { pending, track } = useAdminProgress()
 
   if (!ledger) {
@@ -30,45 +35,108 @@ export function PaymentDesk({ ledger }: { ledger: PaymentLedgerData | null }) {
     })
   }
 
+  const choose = (next: DeskTab) => {
+    setTab(next)
+    setError('')
+    setNotice('')
+  }
+
   const openPlans = ledger.installments.filter((item) => item.status !== 'paid').length
   const openReceipts = ledger.receipts.filter((item) => item.status === 'pending').length
+  const openPayouts = ledger.disbursements.filter((item) => item.status === 'pending').length
+  const disbursed = ledger.disbursements.filter((item) => item.status === 'paid').reduce((sum, item) => sum + item.amount, 0)
+
+  const tabs: { id: DeskTab; label: string; count: number; attention: number }[] = [
+    { id: 'installments', label: 'Installments', count: ledger.installments.length, attention: openPlans },
+    { id: 'receipts', label: 'Receipts', count: ledger.receipts.length, attention: openReceipts },
+    { id: 'disbursements', label: 'Disbursements', count: ledger.disbursements.length, attention: openPayouts },
+  ]
 
   return (
-    <div className="mt-8 space-y-10">
-      <section className="grid overflow-hidden border border-brand-ink bg-brand-ink text-white sm:grid-cols-3">
-        <Figure label="Collected" value={formatUgx(ledger.collected)} note="Installments and receipts marked paid" />
-        <Figure label="Outstanding" value={formatUgx(ledger.outstanding)} note="Still to collect" rule />
-        <Figure label="Open" value={String(openPlans + openReceipts).padStart(2, '0')} note={`${openPlans} installments · ${openReceipts} receipts`} rule />
+    <div className="mt-8">
+      <section className="grid grid-cols-2 overflow-hidden border border-brand-ink bg-brand-ink text-white lg:grid-cols-4">
+        <Figure index={0} label="Collected" value={formatUgx(ledger.collected)} note="Paid installments and receipts" />
+        <Figure index={1} label="Outstanding" value={formatUgx(ledger.outstanding)} note="Still to collect" />
+        <Figure index={2} label="Disbursed" value={ledger.disbursementsReady ? formatUgx(disbursed) : '—'} note={ledger.disbursementsReady ? 'Payouts that succeeded' : 'Payouts are not set up yet'} />
+        <Figure index={3} label="Open" value={String(openPlans + openReceipts + openPayouts)} note={`${openPlans} plans · ${openReceipts} receipts · ${openPayouts} payouts`} />
       </section>
 
-      {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
-      {notice && !error && <p className="text-sm text-brand-muted" role="status">{notice}</p>}
+      <div className="sticky top-20 z-20 -mx-5 mt-8 border-b border-brand-line bg-brand-surface/95 px-5 backdrop-blur-md md:-mx-10 md:px-10">
+        <div role="tablist" aria-label="Payment records" className="flex gap-1 overflow-x-auto">
+          {tabs.map((item) => {
+            const selected = tab === item.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                id={`payments-tab-${item.id}`}
+                aria-selected={selected}
+                aria-controls={`payments-panel-${item.id}`}
+                onClick={() => choose(item.id)}
+                className={`flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-xs font-bold uppercase tracking-[0.14em] ${selected ? 'border-brand-ink text-brand-ink' : 'border-transparent text-brand-muted hover:text-brand-ink'}`}
+              >
+                {item.label}
+                <span className={`min-w-5 px-1 text-[10px] tabular-nums ${selected ? 'text-brand-ink' : 'text-brand-muted'}`}>{item.count}</span>
+                {item.attention > 0 && <span className="size-1.5 rounded-full bg-brand-gold-deep" aria-label={`${item.attention} open`} />}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
-      <InstallmentBook
-        rows={ledger.installments}
-        services={ledger.services}
-        pending={pending}
-        onError={setError}
-        onNotice={setNotice}
-        onDelete={(id) => run(() => deleteInstallment(id), 'Installment deleted.')}
-      />
-      <ReceiptBook
-        rows={ledger.receipts}
-        customers={ledger.customers}
-        pending={pending}
-        onError={setError}
-        onNotice={setNotice}
-        onDelete={(id) => run(() => deleteMobilePayment(id), 'Receipt deleted.')}
-      />
+      <div
+        role="tabpanel"
+        id={`payments-panel-${tab}`}
+        aria-labelledby={`payments-tab-${tab}`}
+        className="mt-6 border border-brand-line bg-white"
+      >
+        {error && <p className="border-b border-brand-line px-5 py-4 text-sm text-red-700" role="alert">{error}</p>}
+        {notice && !error && <p className="border-b border-brand-line px-5 py-4 text-sm text-brand-muted" role="status">{notice}</p>}
+
+        {tab === 'installments' && (
+          <InstallmentBook
+            rows={ledger.installments}
+            services={ledger.services}
+            pending={pending}
+            onError={setError}
+            onNotice={setNotice}
+            onDelete={(id) => run(() => deleteInstallment(id), 'Installment deleted.')}
+          />
+        )}
+        {tab === 'receipts' && (
+          <ReceiptBook
+            rows={ledger.receipts}
+            customers={ledger.customers}
+            pending={pending}
+            onError={setError}
+            onNotice={setNotice}
+            onDelete={(id) => run(() => deleteMobilePayment(id), 'Receipt deleted.')}
+          />
+        )}
+        {tab === 'disbursements' && (
+          <DisbursementBook
+            rows={ledger.disbursements}
+            ready={ledger.disbursementsReady}
+            customers={ledger.customers}
+            pending={pending}
+            onError={setError}
+            onNotice={setNotice}
+            onRefresh={(id) => run(() => refreshDisbursement(id), 'Payout status updated.')}
+          />
+        )}
+      </div>
     </div>
   )
 }
 
-function Figure({ label, value, note, rule = false }: { label: string; value: string; note: string; rule?: boolean }) {
+function Figure({ index, label, value, note }: { index: number; label: string; value: string; note: string }) {
+  const left = index % 2 === 1
+  const below = index >= 2
   return (
-    <div className={`px-6 py-7 ${rule ? 'sm:border-l sm:border-white/10' : ''}`}>
+    <div className={`px-5 py-6 sm:px-6 sm:py-7 ${left ? 'border-l border-white/10' : ''} ${below ? 'border-t border-white/10' : ''} ${index > 0 ? 'lg:border-l lg:border-white/10' : 'lg:border-l-0'} ${below ? 'lg:border-t-0' : ''}`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-gold-light">{label}</p>
-      <p className="mt-3 font-serif text-3xl tracking-[-0.04em] tabular-nums">{value}</p>
+      <p className="mt-3 font-serif text-2xl tracking-[-0.04em] tabular-nums sm:text-3xl">{value}</p>
       <p className="mt-2 text-xs leading-5 text-white/45">{note}</p>
     </div>
   )
@@ -99,18 +167,12 @@ function InstallmentBook({
   }), [rows, query, status])
 
   return (
-    <section className="border border-brand-line bg-white">
-      <div className="flex flex-col gap-5 border-b border-brand-line p-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-muted">Plans</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-[-0.03em]">Installments</h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-brand-muted">Amounts a customer owes on a service. Paid rows appear on their account statement.</p>
-        </div>
-        <button type="button" onClick={() => { setEditing('new'); onError(''); onNotice('') }} className="inline-flex h-12 items-center justify-center gap-2 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">
-          <Plus size={15} /> New installment
-        </button>
-      </div>
-
+    <>
+      <PanelHead
+        detail="Amounts a customer owes on a service. Paid rows appear on their account."
+        action="New installment"
+        onAction={() => { setEditing('new'); setConfirming(null); onError(''); onNotice('') }}
+      />
       {editing && (
         <InstallmentForm
           item={editing === 'new' ? null : editing}
@@ -123,53 +185,49 @@ function InstallmentBook({
           }}
         />
       )}
-
-      <div className="flex flex-col gap-3 border-b border-brand-line px-6 py-4 sm:flex-row sm:items-center">
-        <SearchField value={query} onChange={setQuery} label="Search installments" />
-        <label className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">
-          <span className="sr-only">Status</span>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status" className={`${fieldClass} sm:w-40`}>
-            <option value="all">All statuses</option>
-            {installmentStatuses.map((item) => <option key={item} value={item}>{installmentLabel(item)}</option>)}
-          </select>
-        </label>
-        <p className="text-xs text-brand-muted sm:ml-auto">{visible.length} shown</p>
-      </div>
-
+      <Toolbar
+        query={query}
+        onQuery={setQuery}
+        label="Search installments"
+        status={status}
+        onStatus={setStatus}
+        statuses={installmentStatuses.map((item) => ({ value: item, label: installmentLabel(item) }))}
+        shown={visible.length}
+        total={rows.length}
+      />
       {rows.length === 0 ? (
         <Empty title="No installments yet." detail="Add the first payment on a customer service." />
       ) : visible.length === 0 ? (
-        <Empty title="Nothing matches." detail="Try another name, reference, or status." />
+        <Empty title="Nothing matches." detail="Try another name, reference, or status." action="Clear filters" onAction={() => { setQuery(''); setStatus('all') }} />
       ) : (
         <ol>
           {visible.map((item) => (
-            <li key={item.id} className="grid gap-4 border-b border-brand-line px-6 py-5 last:border-b-0 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] lg:items-center">
-              <div className="min-w-0">
-                <p className="font-serif text-2xl leading-tight">{item.name}</p>
-                <p className="mt-1 truncate text-sm text-brand-muted">{item.customerName} · {item.serviceLabel}</p>
-              </div>
-              <div>
-                <p className="text-sm font-semibold tabular-nums">{formatUgx(item.amount)}</p>
-                <p className="mt-1 text-xs text-brand-muted">Due {formatLongDate(item.dueOn)}{item.paidOn ? ` · Paid ${formatLongDate(item.paidOn)}` : ''}</p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">{item.reference}{item.method ? ` · ${item.method}` : ''}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Row key={item.id}>
+              <RowBody
+                title={item.name}
+                amount={formatUgx(item.amount)}
+                line={`${item.customerName} · ${item.serviceLabel}`}
+                meta={`Due ${formatLongDate(item.dueOn)}${item.paidOn ? ` · Paid ${formatLongDate(item.paidOn)}` : ''} · ${item.reference}${item.method ? ` · ${item.method}` : ''}`}
+              />
+              <RowTools>
                 <StatusBadge tone={item.status === 'paid' ? 'green' : item.status === 'failed' ? 'muted' : 'gold'}>{installmentLabel(item.status)}</StatusBadge>
                 <IconButton label="Edit installment" onClick={() => { setEditing(item); setConfirming(null); onError(''); onNotice('') }}><Pencil size={14} /></IconButton>
-                {item.status !== 'paid' && confirming === item.id ? (
-                  <>
-                    <button type="button" disabled={pending} onClick={() => onDelete(item.id)} className="h-10 bg-red-800 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white disabled:opacity-50">Delete</button>
-                    <button type="button" onClick={() => setConfirming(null)} className="h-10 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted">Cancel</button>
-                  </>
-                ) : item.status !== 'paid' ? (
-                  <IconButton label="Delete installment" onClick={() => setConfirming(item.id)}><Trash2 size={14} /></IconButton>
-                ) : null}
-              </div>
-            </li>
+                {item.status !== 'paid' && (
+                  <DeleteControl
+                    confirming={confirming === item.id}
+                    pending={pending}
+                    ask="Delete this installment?"
+                    onAsk={() => setConfirming(item.id)}
+                    onCancel={() => setConfirming(null)}
+                    onConfirm={() => onDelete(item.id)}
+                  />
+                )}
+              </RowTools>
+            </Row>
           ))}
         </ol>
       )}
-    </section>
+    </>
   )
 }
 
@@ -188,11 +246,17 @@ function InstallmentForm({
   const [status, setStatus] = useState(item?.status ?? 'due')
   const [method, setMethod] = useState(item?.method ?? '')
   const [error, setError] = useState('')
+  const formRef = useRef<HTMLFormElement>(null)
   const { pending, track } = useAdminProgress()
   const methodChoices = method && !methods.includes(method) ? [...methods, method] : methods
 
+  useEffect(() => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [])
+
   return (
     <form
+      ref={formRef}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const formData = new FormData(event.currentTarget)
@@ -203,11 +267,8 @@ function InstallmentForm({
       }}
       className="border-b border-brand-line bg-brand-surface"
     >
-      <div className="flex items-center justify-between px-6 py-5">
-        <h3 className="font-serif text-2xl">{item ? 'Edit installment' : 'New installment'}</h3>
-        <button type="button" onClick={onClose} className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted hover:text-brand-ink">Cancel</button>
-      </div>
-      <div className="grid gap-5 px-6 pb-6 sm:grid-cols-2">
+      <FormTitle title={item ? 'Edit installment' : 'New installment'} onClose={onClose} />
+      <div className="grid gap-5 px-5 pb-6 sm:grid-cols-2 sm:px-6">
         <input type="hidden" name="id" value={item?.id ?? ''} />
         <Label text="Service" className="sm:col-span-2">
           <select name="service_id" value={serviceId} onChange={(event) => setServiceId(event.target.value)} className={fieldClass}>
@@ -244,10 +305,9 @@ function InstallmentForm({
           <input name="reference" defaultValue={item?.reference ?? ''} placeholder="Leave blank to assign one" className={fieldClass} />
         </Label>
       </div>
-      <div className="flex flex-col gap-3 border-t border-brand-line px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-        <p className={`text-xs ${error ? 'text-red-700' : 'text-brand-muted'}`} role="status">{error || 'A blank reference is assigned when you save. Marking it paid records today’s date if you leave the paid date empty.'}</p>
+      <FormFoot error={error} hint="A blank reference is assigned when you save. Marking it paid records today’s date if you leave the paid date empty.">
         <button disabled={pending || services.length === 0} className="h-12 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90 disabled:opacity-60">{pending ? 'Saving…' : item ? 'Save changes' : 'Add installment'}</button>
-      </div>
+      </FormFoot>
     </form>
   )
 }
@@ -277,18 +337,12 @@ function ReceiptBook({
   }), [rows, query, status])
 
   return (
-    <section className="border border-brand-line bg-white">
-      <div className="flex flex-col gap-5 border-b border-brand-line p-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-muted">Receipts</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-[-0.03em]">Mobile Money</h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-brand-muted">Payments taken on the site, and any receipt you record by hand.</p>
-        </div>
-        <button type="button" onClick={() => { setEditing('new'); onError(''); onNotice('') }} className="inline-flex h-12 items-center justify-center gap-2 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">
-          <Plus size={15} /> Record receipt
-        </button>
-      </div>
-
+    <>
+      <PanelHead
+        detail="Payments taken on the site, and any receipt you record by hand."
+        action="Record receipt"
+        onAction={() => { setEditing('new'); setConfirming(null); onError(''); onNotice('') }}
+      />
       {editing && (
         <ReceiptForm
           item={editing === 'new' ? null : editing}
@@ -301,53 +355,49 @@ function ReceiptBook({
           }}
         />
       )}
-
-      <div className="flex flex-col gap-3 border-b border-brand-line px-6 py-4 sm:flex-row sm:items-center">
-        <SearchField value={query} onChange={setQuery} label="Search receipts" />
-        <label className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">
-          <span className="sr-only">Status</span>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter receipts by status" className={`${fieldClass} sm:w-40`}>
-            <option value="all">All statuses</option>
-            {receiptStatuses.map((item) => <option key={item} value={item}>{installmentLabel(item)}</option>)}
-          </select>
-        </label>
-        <p className="text-xs text-brand-muted sm:ml-auto">{visible.length} shown</p>
-      </div>
-
+      <Toolbar
+        query={query}
+        onQuery={setQuery}
+        label="Search receipts"
+        status={status}
+        onStatus={setStatus}
+        statuses={receiptStatuses.map((item) => ({ value: item, label: installmentLabel(item) }))}
+        shown={visible.length}
+        total={rows.length}
+      />
       {rows.length === 0 ? (
         <Empty title="No receipts yet." detail="Mobile Money payments from the site appear here. You can also record one." />
       ) : visible.length === 0 ? (
-        <Empty title="Nothing matches." detail="Try another email, phone, or reference." />
+        <Empty title="Nothing matches." detail="Try another email, phone, or reference." action="Clear filters" onAction={() => { setQuery(''); setStatus('all') }} />
       ) : (
         <ol>
           {visible.map((item) => (
-            <li key={item.id} className="grid gap-4 border-b border-brand-line px-6 py-5 last:border-b-0 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] lg:items-center">
-              <div className="min-w-0">
-                <p className="font-serif text-2xl leading-tight">{item.customerName}</p>
-                <p className="mt-1 truncate text-sm text-brand-muted">{item.email}{item.phone ? ` · ${item.phone}` : ''}</p>
-              </div>
-              <div>
-                <p className="text-sm font-semibold tabular-nums">{formatUgx(item.amount)}</p>
-                <p className="mt-1 text-xs text-brand-muted">{formatLongDate(item.createdOn)} · {item.method}</p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">{item.reference}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Row key={item.id}>
+              <RowBody
+                title={item.customerName}
+                amount={formatUgx(item.amount)}
+                line={`${item.email}${item.phone ? ` · ${formatUgandaPhone(item.phone) || item.phone}` : ''}`}
+                meta={`${formatLongDate(item.createdOn)} · ${item.method} · ${item.reference}`}
+              />
+              <RowTools>
                 <StatusBadge tone={item.status === 'paid' ? 'green' : item.status === 'failed' ? 'muted' : 'gold'}>{installmentLabel(item.status)}</StatusBadge>
                 <IconButton label="Edit receipt" onClick={() => { setEditing(item); setConfirming(null); onError(''); onNotice('') }}><Pencil size={14} /></IconButton>
-                {item.status !== 'paid' && confirming === item.id ? (
-                  <>
-                    <button type="button" disabled={pending} onClick={() => onDelete(item.id)} className="h-10 bg-red-800 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white disabled:opacity-50">Delete</button>
-                    <button type="button" onClick={() => setConfirming(null)} className="h-10 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted">Cancel</button>
-                  </>
-                ) : item.status !== 'paid' ? (
-                  <IconButton label="Delete receipt" onClick={() => setConfirming(item.id)}><Trash2 size={14} /></IconButton>
-                ) : null}
-              </div>
-            </li>
+                {item.status !== 'paid' && (
+                  <DeleteControl
+                    confirming={confirming === item.id}
+                    pending={pending}
+                    ask="Delete this receipt?"
+                    onAsk={() => setConfirming(item.id)}
+                    onCancel={() => setConfirming(null)}
+                    onConfirm={() => onDelete(item.id)}
+                  />
+                )}
+              </RowTools>
+            </Row>
           ))}
         </ol>
       )}
-    </section>
+    </>
   )
 }
 
@@ -368,11 +418,17 @@ function ReceiptForm({
   const [method, setMethod] = useState(item?.method || 'Mobile Money')
   const [status, setStatus] = useState(item?.status ?? 'paid')
   const [error, setError] = useState('')
+  const formRef = useRef<HTMLFormElement>(null)
   const { pending, track } = useAdminProgress()
   const methodChoices = method && !methods.includes(method) ? [method, ...methods] : methods
 
+  useEffect(() => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [])
+
   return (
     <form
+      ref={formRef}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         const formData = new FormData(event.currentTarget)
@@ -383,11 +439,8 @@ function ReceiptForm({
       }}
       className="border-b border-brand-line bg-brand-surface"
     >
-      <div className="flex items-center justify-between px-6 py-5">
-        <h3 className="font-serif text-2xl">{item ? 'Edit receipt' : 'Record receipt'}</h3>
-        <button type="button" onClick={onClose} className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted hover:text-brand-ink">Cancel</button>
-      </div>
-      <div className="grid gap-5 px-6 pb-6 sm:grid-cols-2">
+      <FormTitle title={item ? 'Edit receipt' : 'Record receipt'} onClose={onClose} />
+      <div className="grid gap-5 px-5 pb-6 sm:grid-cols-2 sm:px-6">
         <input type="hidden" name="id" value={item?.id ?? ''} />
         <Label text="Customer" className="sm:col-span-2">
           <select
@@ -431,21 +484,369 @@ function ReceiptForm({
           <input name="reference" defaultValue={item?.reference ?? ''} placeholder="Leave blank to assign one" className={fieldClass} />
         </Label>
       </div>
-      <div className="flex flex-col gap-3 border-t border-brand-line px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-        <p className={`text-xs ${error ? 'text-red-700' : 'text-brand-muted'}`} role="status">{error || 'Choosing a customer fills their email and phone. The receipt then shows on that account.'}</p>
+      <FormFoot error={error} hint="Choosing a customer fills their email and phone. The receipt then shows on that account.">
         <button disabled={pending} className="h-12 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90 disabled:opacity-60">{pending ? 'Saving…' : item ? 'Save changes' : 'Record receipt'}</button>
-      </div>
+      </FormFoot>
     </form>
   )
 }
 
-function SearchField({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
+function DisbursementBook({
+  rows,
+  ready,
+  customers,
+  pending,
+  onError,
+  onNotice,
+  onRefresh,
+}: {
+  rows: LedgerDisbursement[]
+  ready: boolean
+  customers: PaymentLedgerData['customers']
+  pending: boolean
+  onError: (value: string) => void
+  onNotice: (value: string) => void
+  onRefresh: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('all')
+  const [creating, setCreating] = useState(false)
+  const visible = useMemo(() => rows.filter((item) => {
+    const haystack = `${item.recipientName} ${item.email} ${item.phone} ${item.reference} ${item.description} ${item.bankName} ${item.bankAccountName}`.toLowerCase()
+    return haystack.includes(query.trim().toLowerCase()) && (status === 'all' || item.status === status)
+  }), [rows, query, status])
+
   return (
-    <label className="flex h-11 flex-1 items-center gap-2 border border-brand-line bg-white px-3 text-brand-muted">
-      <Search size={16} />
-      <span className="sr-only">{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder="Search" aria-label={label} className="w-full bg-transparent text-sm text-brand-ink outline-none placeholder:text-brand-muted" />
-    </label>
+    <>
+      <PanelHead
+        detail="Send UGX from the Paytota balance to Mobile Money or a bank account."
+        action="New disbursement"
+        disabled={!ready}
+        onAction={() => { setCreating(true); onError(''); onNotice('') }}
+      />
+      {!ready && (
+        <p className="border-b border-brand-line bg-[#f7f3ea] px-5 py-4 text-sm leading-6 text-brand-ink sm:px-6">Run <span className="font-semibold">supabase/0009disbursements.sql</span> in the Supabase SQL editor, then refresh this page.</p>
+      )}
+      {creating && ready && (
+        <DisbursementForm
+          customers={customers}
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            onNotice('Disbursement sent. Paytota will confirm it shortly.')
+            onError('')
+            setCreating(false)
+          }}
+        />
+      )}
+      <Toolbar
+        query={query}
+        onQuery={setQuery}
+        label="Search disbursements"
+        status={status}
+        onStatus={setStatus}
+        statuses={receiptStatuses.map((item) => ({ value: item, label: installmentLabel(item) }))}
+        shown={visible.length}
+        total={rows.length}
+      />
+      {!ready ? null : rows.length === 0 ? (
+        <Empty title="No disbursements yet." detail="A payout appears here as soon as you send it." />
+      ) : visible.length === 0 ? (
+        <Empty title="Nothing matches." detail="Try another name, phone, or reference." action="Clear filters" onAction={() => { setQuery(''); setStatus('all') }} />
+      ) : (
+        <ol>
+          {visible.map((item) => {
+            const destination = item.channel === 'bank'
+              ? `${item.bankName} · ${item.bankAccountNumber}`
+              : formatUgandaPhone(item.phone) || item.phone
+            return (
+              <Row key={item.id}>
+                <RowBody
+                  title={item.recipientName}
+                  amount={formatUgx(item.amount)}
+                  line={item.description}
+                  meta={`${destination} · ${formatLongDate(item.createdOn)} · ${item.channel === 'bank' ? 'Bank' : 'Mobile Money'} · ${item.reference}`}
+                  note={item.providerMessage && item.status !== 'paid' ? item.providerMessage : ''}
+                />
+                <RowTools>
+                  <StatusBadge tone={item.status === 'paid' ? 'green' : item.status === 'failed' ? 'muted' : 'gold'}>{installmentLabel(item.status)}</StatusBadge>
+                  {item.status !== 'paid' && (
+                    <IconButton label="Check payout status" onClick={() => { if (!pending) onRefresh(item.id) }}><RefreshCw size={14} /></IconButton>
+                  )}
+                </RowTools>
+              </Row>
+            )
+          })}
+        </ol>
+      )}
+    </>
+  )
+}
+
+function DisbursementForm({
+  customers,
+  onClose,
+  onSaved,
+}: {
+  customers: PaymentLedgerData['customers']
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [customerId, setCustomerId] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [channel, setChannel] = useState<'mobile' | 'bank'>('mobile')
+  const [amount, setAmount] = useState('')
+  const [description, setDescription] = useState('')
+  const [reviewing, setReviewing] = useState(false)
+  const [error, setError] = useState('')
+  const formRef = useRef<HTMLFormElement>(null)
+  const { pending, track } = useAdminProgress()
+  const network = suggestedNetwork(ugandaMobile(phone) || '')
+  const networkLabel = network === 'mtnmomo' ? 'MTN' : network === 'airtel' ? 'Airtel' : ''
+  const typedEnough = phone.replace(/\D/g, '').length >= 9
+
+  useEffect(() => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [])
+
+  const clearReview = () => setReviewing(false)
+
+  return (
+    <form
+      ref={formRef}
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (channel === 'mobile' && !network) {
+          setError('Enter an MTN or Airtel number.')
+          setReviewing(false)
+          return
+        }
+        if (!reviewing) {
+          setReviewing(true)
+          setError('')
+          return
+        }
+        const formData = new FormData(event.currentTarget)
+        void track((report) => finishSave(report, () => sendDisbursement(formData))).then((result) => {
+          if (result.error) {
+            setError(result.error)
+            setReviewing(false)
+          } else onSaved()
+        })
+      }}
+      className="border-b border-brand-line bg-brand-surface"
+    >
+      <FormTitle title="New disbursement" onClose={onClose} />
+      <div className="grid gap-5 px-5 pb-6 sm:grid-cols-2 sm:px-6">
+        <Label text="Customer" className="sm:col-span-2">
+          <select
+            name="customer_id"
+            value={customerId}
+            onChange={(event) => {
+              const next = event.target.value
+              setCustomerId(next)
+              const customer = customers.find((entry) => entry.id === next)
+              if (customer) {
+                setName(customer.name)
+                setEmail(customer.email)
+                setPhone(customer.phone)
+              }
+              clearReview()
+            }}
+            className={fieldClass}
+          >
+            <option value="">No linked customer</option>
+            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+          </select>
+        </Label>
+        <Label text="Recipient name">
+          <input name="recipient_name" required value={name} onChange={(event) => { setName(event.target.value); clearReview() }} className={fieldClass} />
+        </Label>
+        <Label text="Email">
+          <input name="email" type="email" required value={email} onChange={(event) => { setEmail(event.target.value); clearReview() }} className={fieldClass} />
+        </Label>
+        <Label text="Phone">
+          <input name="phone" type="tel" required inputMode="tel" value={phone} onChange={(event) => { setPhone(event.target.value); clearReview() }} placeholder="07XX XXX XXX" className={fieldClass} />
+          {channel === 'mobile' && networkLabel && <span className="text-[11px] font-semibold normal-case tracking-normal text-brand-green">{networkLabel} Mobile Money</span>}
+          {channel === 'mobile' && typedEnough && !networkLabel && <span className="text-[11px] font-semibold normal-case tracking-normal text-red-700">Use an MTN or Airtel number.</span>}
+        </Label>
+        <Label text="Amount (UGX)">
+          <input name="amount" inputMode="numeric" required value={amount} onChange={(event) => { setAmount(event.target.value); clearReview() }} placeholder="500000" className={fieldClass} />
+        </Label>
+        <div className="sm:col-span-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">Send to</p>
+          <div className="mt-2 grid grid-cols-2 border border-brand-line bg-white">
+            <input type="hidden" name="channel" value={channel} />
+            {([['mobile', 'Mobile Money'], ['bank', 'Bank account']] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={channel === value}
+                onClick={() => { setChannel(value); clearReview() }}
+                className={`h-12 text-xs font-bold uppercase tracking-[0.12em] ${channel === value ? 'bg-brand-ink text-white' : 'text-brand-muted hover:text-brand-ink'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Label text="Description" className="sm:col-span-2">
+          <input name="description" required maxLength={80} value={description} onChange={(event) => { setDescription(event.target.value); clearReview() }} placeholder="Supplier payment" className={fieldClass} />
+        </Label>
+        {channel === 'bank' && (
+          <>
+            <Label text="Bank name">
+              <input name="bank_name" required onChange={clearReview} placeholder="Stanbic Bank" className={fieldClass} />
+            </Label>
+            <Label text="Bank code">
+              <input name="bank_code" required onChange={clearReview} placeholder="SBICUGKX" className={`${fieldClass} uppercase`} />
+            </Label>
+            <Label text="Account name">
+              <input name="bank_account_name" required onChange={clearReview} className={fieldClass} />
+            </Label>
+            <Label text="Account number">
+              <input name="bank_account_number" required inputMode="numeric" onChange={clearReview} className={fieldClass} />
+            </Label>
+          </>
+        )}
+        <Label text="Reference">
+          <input name="reference" onChange={clearReview} placeholder="Leave blank to assign one" className={fieldClass} />
+        </Label>
+      </div>
+      {reviewing && (
+        <div className="mx-5 mb-6 border-t-2 border-[#c9a45c] bg-white px-5 py-5 sm:mx-6">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-gold-deep">Confirm this payout</p>
+          <p className="mt-2 font-serif text-3xl tracking-[-0.04em] tabular-nums">{formatUgx(Number(amount.replace(/\D/g, '')) || 0)}</p>
+          <p className="mt-2 text-sm leading-6 text-brand-ink">To {name || 'the recipient'}{networkLabel && channel === 'mobile' ? ` · ${networkLabel}` : ''}{channel === 'bank' ? ' · Bank account' : ''}</p>
+          {description && <p className="mt-1 text-sm text-brand-muted">{description}</p>}
+          <p className="mt-3 text-xs leading-5 text-brand-muted">Paytota will send this from the company balance. It cannot be cancelled from this page.</p>
+        </div>
+      )}
+      <FormFoot
+        error={error}
+        hint={reviewing ? 'Check the amount and recipient, then send.' : channel === 'mobile' ? 'The payout goes to the Mobile Money number above.' : 'The payout goes to the bank name, code and account number above.'}
+      >
+        {reviewing && <button type="button" onClick={() => setReviewing(false)} className="h-12 px-4 text-xs font-bold uppercase tracking-[0.12em] text-brand-muted">Back</button>}
+        <button disabled={pending} className="h-12 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90 disabled:opacity-60">{pending ? 'Sending…' : reviewing ? 'Send payout' : 'Review payout'}</button>
+      </FormFoot>
+    </form>
+  )
+}
+
+function PanelHead({ detail, action, onAction, disabled = false }: { detail: string; action: string; onAction: () => void; disabled?: boolean }) {
+  return (
+    <div className="flex flex-col gap-4 border-b border-brand-line p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <p className="max-w-xl text-sm leading-6 text-brand-muted">{detail}</p>
+      <button type="button" disabled={disabled} onClick={onAction} className="inline-flex h-12 shrink-0 items-center justify-center gap-2 bg-brand-ink px-5 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90 disabled:opacity-50">
+        <Plus size={15} /> {action}
+      </button>
+    </div>
+  )
+}
+
+function Toolbar({
+  query,
+  onQuery,
+  label,
+  status,
+  onStatus,
+  statuses,
+  shown,
+  total,
+}: {
+  query: string
+  onQuery: (value: string) => void
+  label: string
+  status: string
+  onStatus: (value: string) => void
+  statuses: { value: string; label: string }[]
+  shown: number
+  total: number
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-brand-line px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+      <label className="flex h-12 flex-1 items-center gap-2 border border-brand-line bg-white px-3 text-brand-muted md:h-11">
+        <Search size={16} />
+        <span className="sr-only">{label}</span>
+        <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Search name, phone, or reference" aria-label={label} className="w-full bg-transparent text-base text-brand-ink outline-none placeholder:text-brand-muted md:text-sm" />
+      </label>
+      <label className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">
+        <span className="sr-only">Status</span>
+        <select value={status} onChange={(event) => onStatus(event.target.value)} aria-label="Filter by status" className={`${fieldClass} sm:w-44`}>
+          <option value="all">All statuses</option>
+          {statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>
+      </label>
+      <p className="text-xs text-brand-muted sm:ml-auto">{shown} of {total}</p>
+    </div>
+  )
+}
+
+function Row({ children }: { children: ReactNode }) {
+  return <li className="flex flex-col gap-4 border-b border-brand-line px-5 py-5 last:border-b-0 sm:px-6 lg:flex-row lg:items-center lg:justify-between">{children}</li>
+}
+
+function RowBody({ title, amount, line, meta, note = '' }: { title: string; amount: string; line: string; meta: string; note?: string }) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="font-serif text-xl leading-tight sm:text-2xl">{title}</p>
+        <p className="text-sm font-semibold tabular-nums">{amount}</p>
+      </div>
+      <p className="mt-1 truncate text-sm text-brand-muted">{line}</p>
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-muted">{meta}</p>
+      {note && <p className="mt-2 text-sm leading-5 text-brand-ink">{note}</p>}
+    </div>
+  )
+}
+
+function RowTools({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">{children}</div>
+}
+
+function DeleteControl({
+  confirming,
+  pending,
+  ask,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  confirming: boolean
+  pending: boolean
+  ask: string
+  onAsk: () => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (!confirming) {
+    return <IconButton label={ask} onClick={onAsk}><Trash2 size={14} /></IconButton>
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <span className="text-xs text-brand-muted">{ask}</span>
+      <button type="button" disabled={pending} onClick={onConfirm} className="h-10 bg-red-800 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white disabled:opacity-50">Delete</button>
+      <button type="button" onClick={onCancel} className="h-10 px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted">Keep</button>
+    </span>
+  )
+}
+
+function FormTitle({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-5 sm:px-6">
+      <h3 className="font-serif text-2xl">{title}</h3>
+      <button type="button" onClick={onClose} className="text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted hover:text-brand-ink">Cancel</button>
+    </div>
+  )
+}
+
+function FormFoot({ error, hint, children }: { error: string; hint: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3 border-t border-brand-line px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p className={`text-xs leading-5 ${error ? 'text-red-700' : 'text-brand-muted'}`} role="status">{error || hint}</p>
+      <div className="flex gap-2">{children}</div>
+    </div>
   )
 }
 
@@ -458,18 +859,21 @@ function Label({ text, className = '', children }: { text: string; className?: s
   )
 }
 
-function Empty({ title, detail }: { title: string; detail: string }) {
+function Empty({ title, detail, action, onAction }: { title: string; detail: string; action?: string; onAction?: () => void }) {
   return (
     <div className="px-6 py-16 text-center">
       <p className="font-serif text-2xl">{title}</p>
       <p className="mt-2 text-sm text-brand-muted">{detail}</p>
+      {action && onAction && (
+        <button type="button" onClick={onAction} className="mt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-gold-deep">{action}</button>
+      )}
     </div>
   )
 }
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} className="flex size-10 items-center justify-center border border-brand-line text-brand-ink hover:border-brand-ink">
+    <button type="button" aria-label={label} title={label} onClick={onClick} className="flex size-11 items-center justify-center border border-brand-line text-brand-ink hover:border-brand-ink md:size-10">
       {children}
     </button>
   )

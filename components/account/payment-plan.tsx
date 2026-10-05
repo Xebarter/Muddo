@@ -7,6 +7,7 @@ import { CheckCircle2, Smartphone, X } from 'lucide-react'
 import { useProfile } from '@/components/account/profile-context'
 import { StatusBadge } from '@/components/site/design-system'
 import { refreshMobileMoneyPayment, startMobileMoneyPayment } from '@/lib/actions'
+import { receiptHref, saveReceipt } from '@/lib/save-receipt'
 import { installments as demoInstallments, paymentSummary as demoSummary, service as demoService } from '@/lib/account'
 
 const storageKey = 'muddo-account-payment'
@@ -37,7 +38,6 @@ export function PaymentPlan({
   activeService?: { title: string; reference: string }
 }) {
   const dueInstallment = rows.find((item) => item.status === 'Due soon' || item.status === 'Due' || item.status === 'Pending' || item.status === 'Failed')
-  const [receiptReference, setReceiptReference] = useState<string | null>(null)
   const [paying, setPaying] = useState(false)
   const [pending, setPending] = useState<PendingPayment | null>(null)
   const payButtonRef = useRef<HTMLButtonElement>(null)
@@ -64,8 +64,6 @@ export function PaymentPlan({
       // The request still shows for this visit.
     }
   }
-
-  const receipt = rows.find((item) => item.reference === receiptReference)
 
   return (
     <>
@@ -138,9 +136,9 @@ export function PaymentPlan({
                 <div className="flex items-center justify-between gap-3 md:justify-end">
                   <StatusBadge tone={tone}>{label}</StatusBadge>
                   {item.status === 'Paid' ? (
-                    <button type="button" onClick={() => setReceiptReference(item.reference)} className="text-[10px] font-bold uppercase tracking-wider text-brand-gold-deep hover:text-brand-ink">
+                    <a href={receiptHref(item.reference)} className="text-[10px] font-bold uppercase tracking-wider text-brand-gold-deep hover:text-brand-ink">
                       Receipt
-                    </button>
+                    </a>
                   ) : processing ? null : (
                     <button type="button" onClick={() => setPaying(true)} className="text-[10px] font-bold uppercase tracking-wider text-brand-ink hover:text-brand-gold-deep">
                       Pay
@@ -152,7 +150,7 @@ export function PaymentPlan({
           })}
         </div>
         <p className="border-t border-brand-line px-5 py-4 text-xs leading-5 text-brand-muted md:px-6">
-          Receipts are in <Link href="/account/documents" className="font-semibold text-brand-ink underline-offset-2 hover:underline">Documents</Link>.
+          Paid receipts stay on your <Link href="/account/profile" className="font-semibold text-brand-ink underline-offset-2 hover:underline">profile</Link>.
         </p>
       </section>
 
@@ -172,9 +170,6 @@ export function PaymentPlan({
             try { sessionStorage.removeItem(storageKey) } catch { /* The plan still refreshes from the account. */ }
           }}
         />
-      )}
-      {receipt && (
-        <ReceiptDialog installment={receipt} serviceTitle={activeService.title} serviceReference={activeService.reference} onClose={() => setReceiptReference(null)} />
       )}
     </>
   )
@@ -215,6 +210,7 @@ function PaymentDialog({
   const [outcome, setOutcome] = useState<'pending' | 'paid' | 'failed'>('pending')
   const panelRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const savedReceipt = useRef(false)
 
   useEffect(() => {
     if (!phoneEdited) setPhone(profile.phone)
@@ -239,6 +235,12 @@ function PaymentDialog({
       window.clearInterval(timer)
     }
   }, [recorded, outcome, reference, router])
+
+  useEffect(() => {
+    if (outcome !== 'paid' || savedReceipt.current) return
+    savedReceipt.current = true
+    saveReceipt(reference)
+  }, [outcome, reference])
 
   useDialog(panelRef, closeRef, onClose)
 
@@ -279,7 +281,7 @@ function PaymentDialog({
             <CheckCircle2 className={outcome === 'failed' ? 'text-brand-gold-deep' : 'text-brand-green'} size={36} />
             <p className="mt-5 text-sm leading-6 text-brand-muted">
               {outcome === 'paid'
-                ? 'Paid.'
+                ? 'Paid. Your receipt is downloading.'
                 : outcome === 'failed'
                   ? 'Not paid. Try again.'
                   : 'Approve the prompt on your phone.'}
@@ -294,9 +296,16 @@ function PaymentDialog({
                 Try again
               </button>
             ) : (
-              <button type="button" onClick={onClose} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-ink text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">
-                Close
-              </button>
+              <div className="mt-6 flex flex-col gap-3">
+                {outcome === 'paid' && (
+                  <a href={receiptHref(reference)} className="inline-flex h-12 w-full items-center justify-center bg-brand-gold text-xs font-bold uppercase tracking-[0.12em] text-brand-ink hover:bg-brand-gold-light">
+                    Download receipt
+                  </a>
+                )}
+                <button type="button" onClick={onClose} className="inline-flex h-12 w-full items-center justify-center bg-brand-ink text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-brand-ink/90">
+                  Close
+                </button>
+              </div>
             )}
           </div>
         ) : (
@@ -323,60 +332,6 @@ function PaymentDialog({
             <button type="button" onClick={submit} disabled={submitting} className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-gold text-xs font-bold uppercase tracking-[0.14em] text-brand-ink hover:bg-brand-gold-light disabled:opacity-60">
               {submitting ? 'Sending…' : 'Pay'}
             </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ReceiptDialog({
-  installment,
-  serviceTitle,
-  serviceReference,
-  onClose,
-}: {
-  installment: PlanInstallment
-  serviceTitle: string
-  serviceReference: string
-  onClose: () => void
-}) {
-  const { profile } = useProfile()
-  const panelRef = useRef<HTMLDivElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
-  useDialog(panelRef, closeRef, onClose)
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-5">
-      <button type="button" aria-label="Close receipt" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-[#0b1612]/60 backdrop-blur-[3px]" />
-      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="receipt-title" className="relative z-10 max-h-[92dvh] w-full max-w-lg overflow-y-auto bg-white">
-        <div className="flex items-start justify-between gap-4 border-b border-brand-line p-6">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand-gold-deep">Mudogwaluyiira Group</p>
-            <h2 id="receipt-title" className="mt-2 font-serif text-3xl tracking-[-0.03em]">Receipt</h2>
-          </div>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label="Close receipt" className="flex size-11 shrink-0 items-center justify-center border border-brand-line text-brand-ink hover:border-brand-ink">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="flex items-center justify-between gap-4 px-6 pt-6">
-          <StatusBadge tone="green">Paid</StatusBadge>
-          <p className="text-xs text-brand-muted">{installment.reference}</p>
-        </div>
-        <dl className="mt-4 divide-y divide-brand-line border-y border-brand-line">
-          <ReceiptRow label="From" value={profile.name} />
-          <ReceiptRow label="Service" value={serviceTitle} />
-          <ReceiptRow label="Item" value={installment.name} />
-          <ReceiptRow label="Method" value={installment.method ?? 'Payment'} />
-          <ReceiptRow label="Date" value={installment.paidOn ?? installment.due} />
-          <ReceiptRow label="Ref" value={serviceReference} />
-        </dl>
-        <div className="flex items-end justify-end p-6">
-          <p className="font-serif text-2xl tracking-[-0.03em]">{installment.amount}</p>
-        </div>
-        {installment.reference === 'TXN-2048' && (
-          <div className="border-t border-brand-line px-6 py-4">
-            <Link href="/account/documents" className="text-[10px] font-bold uppercase tracking-wider text-brand-gold-deep hover:text-brand-ink">Documents</Link>
           </div>
         )}
       </div>

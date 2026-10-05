@@ -1,4 +1,5 @@
 import type { PortalMobilePayment } from '@/lib/data'
+import { receiptHref } from '@/lib/save-receipt'
 
 export function MobilePaymentList({ rows }: { rows: PortalMobilePayment[] }) {
   if (rows.length === 0) return null
@@ -16,6 +17,9 @@ export function MobilePaymentList({ rows }: { rows: PortalMobilePayment[] }) {
             <div className="text-right">
               <p className="text-sm font-semibold">{row.amount}</p>
               <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">{row.status}</p>
+              {row.status === 'Successful' && (
+                <a href={receiptHref(row.reference)} className="mt-2 inline-flex text-[10px] font-bold uppercase tracking-[0.14em] text-brand-gold-deep hover:text-brand-ink">Receipt</a>
+              )}
             </div>
           </div>
         ))}
