@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
@@ -44,6 +45,7 @@ export function LoginForm() {
   const [mode, setMode] = useState<'sign-in' | 'create'>('sign-in')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const openWorkspace = async (idToken: string) => {
     const response = await fetch('/api/auth/firebase', {
@@ -104,32 +106,42 @@ export function LoginForm() {
   }
 
   return (
-    <div className="mt-6 lg:mt-8">
+    <div className="mt-5 lg:mt-8">
       <form onSubmit={onEmail} className="flex flex-col gap-4">
-        {mode === 'create' && <input name="full_name" autoComplete="name" placeholder="Full name" className="field" />}
+        {mode === 'create' && (
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-muted">Full name</span>
+            <input name="full_name" autoComplete="name" placeholder="Your name" className="field mt-2" />
+          </label>
+        )}
         <label className="block">
           <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-muted">Email</span>
-          <input name="email" type="email" required autoFocus autoComplete="email" placeholder="Email address" className="field mt-2" />
+          <input name="email" type="email" required inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="email" placeholder="Email address" className="field mt-2" />
         </label>
         <label className="block">
           <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-muted">Password</span>
-          <input name="password" type="password" required minLength={8} autoComplete={mode === 'create' ? 'new-password' : 'current-password'} placeholder="Password" className="field mt-2" />
+          <span className="relative mt-2 block">
+            <input name="password" type={showPassword ? 'text' : 'password'} required minLength={8} autoComplete={mode === 'create' ? 'new-password' : 'current-password'} enterKeyHint="go" placeholder="Password" className="field pr-12" />
+            <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-brand-muted" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </span>
         </label>
-        {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-        <button disabled={pending} className="h-12 bg-brand-ink text-xs font-bold uppercase tracking-[0.14em] text-white hover:bg-brand-ink/90 disabled:opacity-60">
+        {error && <p role="alert" className="text-sm leading-6 text-red-700">{error}</p>}
+        <button disabled={pending} className="mt-1 h-12 bg-brand-ink text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-brand-ink/90 active:translate-y-px disabled:opacity-60">
           {pending ? 'Please wait' : mode === 'sign-in' ? 'Sign in' : 'Create account'}
         </button>
-        <button type="button" onClick={() => { setMode(mode === 'sign-in' ? 'create' : 'sign-in'); setError('') }} className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-gold-deep">
+        <button type="button" onClick={() => { setMode(mode === 'sign-in' ? 'create' : 'sign-in'); setError(''); setShowPassword(false) }} className="min-h-11 text-xs font-semibold uppercase tracking-[0.12em] text-brand-gold-deep">
           {mode === 'sign-in' ? 'Need an account? Create one' : 'Already registered? Sign in'}
         </button>
       </form>
-      <div className="mt-6 lg:mt-8">
+      <div className="mt-2">
         <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-[0.18em] text-brand-muted">
           <span className="h-px flex-1 bg-brand-line" />
           Or
           <span className="h-px flex-1 bg-brand-line" />
         </div>
-        <button type="button" onClick={onGoogle} disabled={pending} className="mt-4 flex h-12 w-full items-center justify-center gap-3 border border-brand-line text-sm font-semibold text-brand-ink hover:border-brand-ink disabled:opacity-60">
+        <button type="button" onClick={onGoogle} disabled={pending} className="mt-4 flex h-12 w-full items-center justify-center gap-3 border border-brand-line bg-white text-sm font-semibold text-brand-ink transition-colors hover:border-brand-ink active:translate-y-px disabled:opacity-60">
           <GoogleMark />
           Continue with Google
         </button>

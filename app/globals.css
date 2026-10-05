@@ -195,6 +195,12 @@
   @apply w-full border border-[#d9ddd8] bg-white px-4 py-3 text-sm text-[#15251f] outline-none transition placeholder:text-[#9aa49f] focus:border-[#b48b45] focus:ring-1 focus:ring-[#b48b45];
 }
 
+.login-sheet .field {
+  min-height: 3.25rem;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
 .pay-button {
   isolation: isolate;
   overflow: hidden;
