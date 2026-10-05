@@ -234,7 +234,7 @@ function ContentForm({
     title: item?.title ?? '',
     body: item?.body ?? '',
     image: item?.image ?? '',
-    status: item?.status ?? 'draft',
+    status: item?.status ?? (kind === 'activity' ? 'published' : 'draft'),
   }
   const [slug, setSlug] = useState<string>(initial.slug)
   const [title, setTitle] = useState(initial.title)
@@ -372,8 +372,8 @@ function ContentForm({
           <label className="flex flex-col gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">
             Visibility
             <select name="status" value={status} onChange={(event) => setStatus(event.target.value as 'draft' | 'published')} className="h-11 border border-brand-line bg-white px-3 text-sm font-medium normal-case tracking-normal text-brand-ink">
-              <option value="draft">Draft, hidden from the homepage</option>
               <option value="published">Published on the homepage</option>
+              <option value="draft">Draft, hidden from the homepage</option>
             </select>
           </label>
         </div>

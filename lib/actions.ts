@@ -734,7 +734,7 @@ export async function saveContentItem(formData: FormData) {
   const title = String(formData.get('title') ?? '').trim()
   const slug = String(formData.get('slug') ?? '').trim()
   const body = String(formData.get('body') ?? '').trim()
-  const status = String(formData.get('status') ?? 'draft')
+  const status = String(formData.get('status') ?? (kind === 'activity' ? 'published' : 'draft'))
   const imagePath = String(formData.get('image_path') ?? '').trim()
   const division = businesses.find((item) => item.slug === slug)
 

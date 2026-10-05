@@ -19,6 +19,25 @@ const icons = {
   'events-management': CalendarDays,
 } as const
 
+function belongsToBusiness(story: { slug: string; category: string }, business: { slug: string; title: string }) {
+  const category = story.category.trim().toLowerCase()
+  return story.slug === business.slug || category === business.title.toLowerCase() || category === business.slug
+}
+
+function StoryCard({ story, href }: { story: { id: string; title: string; text: string; category: string; image: string }; href?: string }) {
+  return (
+    <article id={story.id} className="flex h-full flex-col overflow-hidden bg-white">
+      <div className="aspect-[16/10] overflow-hidden"><img src={story.image || '/mudogwaluyiira-hero.png'} alt="" className="size-full object-cover" /></div>
+      <div className="flex flex-1 flex-col p-5 sm:p-6">
+        {story.category.trim() && <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#b48b45]">{story.category}</p>}
+        <h3 className="mt-2 font-serif text-2xl leading-tight">{story.title}</h3>
+        <p className="mt-3 text-sm leading-6 text-[#65736d]">{story.text}</p>
+        {href && <Link href={href} className="mt-5 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]">Learn more <ArrowRight className="size-3" /></Link>}
+      </div>
+    </article>
+  )
+}
+
 const approach = [
   { title: 'Local understanding', text: 'The work is done in Uganda, for the places and people it is meant to serve.' },
   { title: 'Professional standards', text: 'Each business is delivered in clear stages, with care from the first conversation to the last.' },
@@ -36,8 +55,14 @@ const fallbackStories = [
 export default async function WhatWeDoPage() {
   const [published, hero] = await Promise.all([getPublicContent(), getHomepageHero()])
   const stories = published?.activities?.length ? published.activities : fallbackStories
-  const known = new Set<string>(businesses.map((business) => business.slug))
-  const extras = stories.filter((story) => !known.has(story.slug))
+  const byBusiness = new Map(businesses.map((business) => [business.slug, [] as typeof stories]))
+  const extras = stories.filter((story) => {
+    const business = businesses.find((item) => belongsToBusiness(story, item))
+    if (!business) return true
+    byBusiness.get(business.slug)?.push(story)
+    return false
+  })
+  const groups = businesses.map((business) => ({ business, stories: byBusiness.get(business.slug) ?? [] }))
 
   return (
     <PublicSite>
@@ -76,8 +101,8 @@ export default async function WhatWeDoPage() {
         </div>
       </section>
 
-      {businesses.map((business, index) => {
-        const story = stories.find((item) => item.slug === business.slug)
+      {groups.map(({ business, stories: groupStories }, index) => {
+        const [story, ...more] = groupStories
         const Icon = icons[business.slug]
         const image = story?.image || hero.image
         return (
@@ -111,6 +136,13 @@ export default async function WhatWeDoPage() {
                 </article>
               ))}
             </div>
+            {more.length > 0 && (
+              <div className="border-t border-[#d9ddd8] bg-[#edeFEB]">
+                <div className="mx-auto grid max-w-7xl gap-4 px-5 py-10 sm:grid-cols-2 lg:px-8 lg:py-14">
+                  {more.map((item) => <StoryCard key={item.id} story={item} href={`/businesses/${business.slug}`} />)}
+                </div>
+              </div>
+            )}
           </section>
         )
       })}
@@ -121,16 +153,7 @@ export default async function WhatWeDoPage() {
             <p className="eyebrow">Also underway</p>
             <h2 className="section-title">More of the work.</h2>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {extras.map((story) => (
-                <article key={story.id} className="overflow-hidden bg-white">
-                  <div className="aspect-[16/10] overflow-hidden"><img src={story.image} alt="" className="size-full object-cover" /></div>
-                  <div className="p-5 sm:p-6">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#b48b45]">{story.category}</p>
-                    <h3 className="mt-2 font-serif text-2xl leading-tight">{story.title}</h3>
-                    <p className="mt-3 text-sm leading-6 text-[#65736d]">{story.text}</p>
-                  </div>
-                </article>
-              ))}
+              {extras.map((story) => <StoryCard key={story.id} story={story} />)}
             </div>
           </div>
         </section>
