@@ -17,7 +17,7 @@ export type FirebaseIdentity = {
 function decodePart(part: string) {
   const padded = part.replace(/-/g, '+').replace(/_/g, '/')
   const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4))
-  return Buffer.from(padded + pad)
+  return Buffer.from(padded + pad, 'base64')
 }
 
 async function signingCerts(force: boolean) {

@@ -21,6 +21,6 @@ export async function POST(request: Request) {
     return Response.json({ role: result.role })
   } catch (error) {
     console.error('firebase session', error instanceof Error ? error.message : error)
-    return Response.json({ error: 'Firebase could not confirm this sign-in.' }, { status: 401 })
+    return Response.json({ error: 'This sign-in could not be confirmed. Try again.' }, { status: 401 })
   }
 }
