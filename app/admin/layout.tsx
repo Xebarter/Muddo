@@ -23,6 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       applicationCount={applicationError || !newApplications ? undefined : String(newApplications).padStart(2, '0')}
       contactName={snapshot?.settings.contact_name ?? 'Admin Manager'}
       roleLabel={snapshot?.settings.role_label ?? 'Operations'}
+      workspaceName={snapshot?.settings.workspace_name ?? 'Mudogwaluyiira operations'}
     >
       {children}
     </AdminShell>

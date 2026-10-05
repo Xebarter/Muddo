@@ -26,7 +26,7 @@ export function DocumentLibrary({ documents }: { documents: PortalDocument[] }) 
                   <span className="block text-sm font-semibold">{item.name}</span>
                   <span className="mt-1 block text-xs text-brand-muted">{item.type} · {item.date}</span>
                 </span>
-                <StatusBadge tone={item.status === 'Signed' ? 'green' : 'muted'}>{item.status}</StatusBadge>
+                <StatusBadge tone={item.status === 'Awaiting review' ? 'gold' : item.status === 'Signed' || item.status === 'Published' || item.status === 'Available' ? 'green' : 'muted'}>{item.status}</StatusBadge>
               </button>
             )
           })}
@@ -37,6 +37,11 @@ export function DocumentLibrary({ documents }: { documents: PortalDocument[] }) 
         <h2 className="mt-3 font-serif text-2xl">{selected.name}</h2>
         <p className="mt-4 text-sm leading-6 text-white/65">{selected.detail}</p>
         <p className="mt-6 text-xs text-white/45">Filed {selected.date}</p>
+        {selected.file && (
+          <a href={selected.file} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex h-12 w-full items-center justify-center bg-brand-gold px-5 text-xs font-bold uppercase tracking-[0.12em] text-brand-ink hover:bg-brand-gold-light sm:w-auto">
+            Open file
+          </a>
+        )}
       </aside>
     </div>
   )

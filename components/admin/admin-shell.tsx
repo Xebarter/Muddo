@@ -51,6 +51,7 @@ export function AdminShell({
   applicationCount,
   contactName = 'Admin Manager',
   roleLabel = 'Operations',
+  workspaceName = 'Mudogwaluyiira operations',
 }: {
   children: React.ReactNode
   requestCount?: string
@@ -58,6 +59,7 @@ export function AdminShell({
   applicationCount?: string
   contactName?: string
   roleLabel?: string
+  workspaceName?: string
 }) {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -112,18 +114,18 @@ export function AdminShell({
 
       <div className="flex">
         <aside className="sticky top-20 hidden h-[calc(100dvh-5rem)] w-72 shrink-0 flex-col border-r border-white/10 bg-[#101c17] text-white md:flex">
-          <SidebarFrame pathname={pathname} requestCount={requestCount} messageCount={messageCount} applicationCount={applicationCount} showIntro />
+          <SidebarFrame pathname={pathname} requestCount={requestCount} messageCount={messageCount} applicationCount={applicationCount} workspaceName={workspaceName} roleLabel={roleLabel} showIntro />
         </aside>
         <section className="min-w-0 flex-1 px-5 py-8 md:px-10 md:py-12">{children}</section>
       </div>
 
-      <AdminDrawer open={menuOpen} onClose={closeMenu} onNavigate={dismissMenu} pathname={pathname} requestCount={requestCount} messageCount={messageCount} applicationCount={applicationCount} />
+      <AdminDrawer open={menuOpen} onClose={closeMenu} onNavigate={dismissMenu} pathname={pathname} requestCount={requestCount} messageCount={messageCount} applicationCount={applicationCount} workspaceName={workspaceName} roleLabel={roleLabel} />
     </main>
     </AdminProgressProvider>
   )
 }
 
-function SidebarFrame({ pathname, requestCount, messageCount, applicationCount, onNavigate, motion, showIntro = false }: { pathname: string; requestCount: string; messageCount?: string; applicationCount?: string; onNavigate?: () => void; motion?: boolean; showIntro?: boolean }) {
+function SidebarFrame({ pathname, requestCount, messageCount, applicationCount, workspaceName, roleLabel, onNavigate, motion, showIntro = false }: { pathname: string; requestCount: string; messageCount?: string; applicationCount?: string; workspaceName: string; roleLabel: string; onNavigate?: () => void; motion?: boolean; showIntro?: boolean }) {
   const links = navigation.map((item) => {
     if (item.href === '/admin/service-requests') return { ...item, count: requestCount }
     if (item.href === '/admin/messages' && messageCount) return { ...item, count: messageCount }
@@ -147,7 +149,7 @@ function SidebarFrame({ pathname, requestCount, messageCount, applicationCount, 
       <div className="shrink-0 border-t border-white/10 px-3 py-4">
         <NavLink {...settingsItem} current={isCurrent(pathname, settingsItem.href)} onNavigate={onNavigate} motion={motion} delay={70 + navigation.length * 35} />
         <SignOutButton className="mt-4 px-4 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-gold-light" />
-        <p className="px-4 pb-2 pt-4 text-[11px] leading-5 tracking-wide text-white/35">Mudogwaluyiira Group<br />Operations</p>
+        <p className="px-4 pb-2 pt-4 text-[11px] leading-5 tracking-wide text-white/35"><span className="block truncate">{workspaceName}</span><span className="block truncate">{roleLabel}</span></p>
       </div>
     </>
   )
@@ -188,7 +190,7 @@ function NavLink({
   )
 }
 
-function AdminDrawer({ open, onClose, onNavigate, pathname, requestCount, messageCount, applicationCount }: { open: boolean; onClose: () => void; onNavigate: () => void; pathname: string; requestCount: string; messageCount?: string; applicationCount?: string }) {
+function AdminDrawer({ open, onClose, onNavigate, pathname, requestCount, messageCount, applicationCount, workspaceName, roleLabel }: { open: boolean; onClose: () => void; onNavigate: () => void; pathname: string; requestCount: string; messageCount?: string; applicationCount?: string; workspaceName: string; roleLabel: string }) {
   const panelRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -261,7 +263,7 @@ function AdminDrawer({ open, onClose, onNavigate, pathname, requestCount, messag
             <X strokeWidth={1.5} />
           </button>
         </div>
-        <SidebarFrame pathname={pathname} requestCount={requestCount} messageCount={messageCount} applicationCount={applicationCount} onNavigate={onNavigate} motion={open} />
+        <SidebarFrame pathname={pathname} requestCount={requestCount} messageCount={messageCount} applicationCount={applicationCount} workspaceName={workspaceName} roleLabel={roleLabel} onNavigate={onNavigate} motion={open} />
       </aside>
     </div>
   )

@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Building2, CalendarDays, GraduationCap, Users, WalletCards } from 'lucide-react'
-import { RequestServiceButton, SiteChrome } from '@/components/site/site-chrome'
+import { PublicSite } from '@/components/site/public-site'
+import { RequestServiceButton } from '@/components/site/site-chrome'
 import { businesses } from '@/lib/businesses'
 import { getHomepageHero, getPublicContent } from '@/lib/data'
 
@@ -39,7 +40,7 @@ export default async function WhatWeDoPage() {
   const extras = stories.filter((story) => !known.has(story.slug))
 
   return (
-    <SiteChrome>
+    <PublicSite>
       <section className="relative flex min-h-[70svh] items-end overflow-hidden bg-[#15251f] pb-14 pt-28 text-white sm:min-h-[560px] sm:pb-20 sm:pt-36 lg:pb-24">
         <img src={hero.image} alt="" className="absolute inset-0 size-full object-cover object-[72%_center] opacity-60 sm:object-center" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#15251f]/90 via-[#15251f]/70 to-[#15251f]/25" />
@@ -147,6 +148,6 @@ export default async function WhatWeDoPage() {
           </RequestServiceButton>
         </div>
       </section>
-    </SiteChrome>
+    </PublicSite>
   )
 }

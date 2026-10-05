@@ -1,8 +1,10 @@
 import { Suspense } from 'react'
 import { BrandMark } from '@/components/site/design-system'
 import { LoginForm } from '@/components/auth/login-form'
+import { getSiteContact } from '@/lib/data'
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const contact = await getSiteContact()
   return (
     <main className="grid min-h-screen bg-brand-surface text-brand-ink lg:grid-cols-[1.05fr_0.95fr]">
       <aside className="relative hidden overflow-hidden bg-brand-ink text-white lg:flex">
@@ -15,7 +17,7 @@ export default function LoginPage() {
             <h2 className="mt-4 font-serif text-5xl leading-[1.02] tracking-[-0.04em]">Your services, payments and documents, kept together.</h2>
             <p className="mt-5 max-w-md text-sm leading-6 text-white/70">Sign in with your email and password. Google is available if you prefer it.</p>
           </div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">Kampala, Uganda</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">{contact.address}</p>
         </div>
       </aside>
       <section className="flex items-center justify-center px-5 py-8 sm:px-8 lg:py-12">

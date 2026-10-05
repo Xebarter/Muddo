@@ -2,6 +2,8 @@ import { cache } from 'react'
 import { businesses } from '@/lib/businesses'
 import { usesOfImage, type GalleryImageUse } from '@/lib/gallery-uses'
 import { applicationStatuses, jobStatuses, type ApplicationStatus, type JobStatus } from '@/lib/careers'
+import { companyAddress, companyEmail, companyPhoneDisplay, formatUgandaPhone, siteContactFrom } from '@/lib/contact'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import {
   customer,
@@ -69,6 +71,7 @@ export type PortalDocument = {
   date: string
   status: string
   detail: string
+  file?: string
 }
 
 export type PortalNotification = {
@@ -143,7 +146,7 @@ export const getPortal = cache(async (): Promise<PortalData | null> => {
 
   const [{ data: services }, { data: documents }, { data: notifications }] = await Promise.all([
     supabase.from('services').select('id, reference, title, location, progress, stage, expected_completion, status, division, updated_on, contract_value').eq('customer_id', owned.id).order('created_at'),
-    supabase.from('documents').select('id, name, doc_type, status, detail, filed_on').eq('customer_id', owned.id).order('filed_on', { ascending: false }),
+    supabase.from('documents').select('id, name, doc_type, status, detail, file_path, filed_on').eq('customer_id', owned.id).order('filed_on', { ascending: false }),
     supabase.from('notifications').select('id, title, body, href, read_at, created_at').eq('customer_id', owned.id).order('created_at', { ascending: false }),
   ])
 
@@ -200,13 +203,21 @@ export const getPortal = cache(async (): Promise<PortalData | null> => {
       total: formatUgx(total),
       paidWidth: total ? `${Math.round((paid / total) * 100)}%` : '0%',
     },
-    documents: (documents ?? []).map((item) => ({
-      id: item.id,
-      name: item.name,
-      type: item.doc_type,
-      date: formatLongDate(item.filed_on),
-      status: documentLabel(item.status),
-      detail: item.detail,
+    documents: await Promise.all((documents ?? []).filter((item) => item.status !== 'draft').map(async (item) => {
+      let file = ''
+      if (item.file_path) {
+        const signed = await supabase.storage.from('documents').createSignedUrl(item.file_path, 60 * 60)
+        file = signed.data?.signedUrl ?? ''
+      }
+      return {
+        id: item.id,
+        name: item.name,
+        type: item.doc_type,
+        date: formatLongDate(item.filed_on),
+        status: documentLabel(item.status),
+        detail: item.detail,
+        file,
+      }
     })),
     notifications: (notifications ?? []).map((item) => ({
       id: item.id,
@@ -335,6 +346,67 @@ export const getPublicContent = cache(async (): Promise<PublicContent | null> =>
     gallery: (gallery ?? []).map((item) => ({ id: item.id, title: item.title, category: item.category, image: item.image_path })),
   }
 })
+
+export type WorkspaceSettings = {
+  workspaceName: string
+  contactName: string
+  roleLabel: string
+  notificationEmail: string
+  publicEmail: string
+  phone: string
+  whatsapp: string
+  address: string
+  hours: string
+  contactReady: boolean
+}
+
+const fallbackWorkspace: WorkspaceSettings = {
+  workspaceName: 'Mudogwaluyiira operations',
+  contactName: 'Admin Manager',
+  roleLabel: 'Operations',
+  notificationEmail: companyEmail,
+  publicEmail: companyEmail,
+  phone: companyPhoneDisplay,
+  whatsapp: companyPhoneDisplay,
+  address: companyAddress,
+  hours: '',
+  contactReady: false,
+}
+
+export const getSiteSettings = cache(async (): Promise<WorkspaceSettings> => {
+  try {
+    const admin = createAdminClient()
+    const full = await admin.from('workspace_settings').select('workspace_name, contact_name, role_label, notification_email, public_email, phone, whatsapp, address, hours').eq('id', 1).maybeSingle()
+    if (!full.error && full.data) {
+      const phone = formatUgandaPhone(full.data.phone) || companyPhoneDisplay
+      return {
+        workspaceName: full.data.workspace_name,
+        contactName: full.data.contact_name,
+        roleLabel: full.data.role_label,
+        notificationEmail: full.data.notification_email,
+        publicEmail: full.data.public_email,
+        phone,
+        whatsapp: formatUgandaPhone(full.data.whatsapp) || phone,
+        address: full.data.address?.trim() || companyAddress,
+        hours: full.data.hours?.trim() ?? '',
+        contactReady: true,
+      }
+    }
+    const basic = await admin.from('workspace_settings').select('workspace_name, contact_name, role_label, notification_email').eq('id', 1).maybeSingle()
+    if (basic.error || !basic.data) return fallbackWorkspace
+    return {
+      ...fallbackWorkspace,
+      workspaceName: basic.data.workspace_name,
+      contactName: basic.data.contact_name,
+      roleLabel: basic.data.role_label,
+      notificationEmail: basic.data.notification_email,
+    }
+  } catch {
+    return fallbackWorkspace
+  }
+})
+
+export const getSiteContact = cache(async () => siteContactFrom(await getSiteSettings()))
 
 export type AdminSnapshot = {
   customers: { id: string; label: string }[]
@@ -516,6 +588,55 @@ export const getServiceRequests = cache(async (): Promise<ServiceRequestRecord[]
       tone: requestTone(item.status),
     }
   })
+})
+
+export type ProgressUpdateRecord = {
+  id: string
+  serviceId: string
+  serviceLabel: string
+  title: string
+  body: string
+  progress: number
+  publishedOn: string
+  date: string
+}
+
+export type ProgressDeskData = {
+  updates: ProgressUpdateRecord[]
+  services: { id: string; label: string }[]
+}
+
+export const getProgressDesk = cache(async (): Promise<ProgressDeskData | null> => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+
+  const [updates, services, customers] = await Promise.all([
+    supabase.from('progress_updates').select('id, service_id, title, body, progress, published_on').order('published_on', { ascending: false }),
+    supabase.from('services').select('id, reference, title, customer_id').order('created_at', { ascending: false }),
+    supabase.from('customers').select('id, full_name'),
+  ])
+  if (updates.error || services.error || customers.error) return null
+
+  const names = new Map((customers.data ?? []).map((item) => [item.id, item.full_name]))
+  const labels = new Map((services.data ?? []).map((item) => [
+    item.id,
+    `${item.reference} · ${item.title} · ${names.get(item.customer_id) ?? 'Customer'}`,
+  ]))
+
+  return {
+    services: (services.data ?? []).map((item) => ({ id: item.id, label: labels.get(item.id) ?? item.title })),
+    updates: (updates.data ?? []).map((item) => ({
+      id: item.id,
+      serviceId: item.service_id,
+      serviceLabel: labels.get(item.service_id) ?? 'Service',
+      title: item.title,
+      body: item.body,
+      progress: item.progress,
+      publishedOn: item.published_on,
+      date: formatLongDate(item.published_on),
+    })),
+  }
 })
 
 export type LedgerInstallment = {
@@ -877,4 +998,66 @@ export async function getJobApplications(): Promise<JobApplicationRecord[] | nul
       tone: rawStatus === 'shortlisted' ? 'green' as const : rawStatus === 'declined' ? 'muted' as const : 'gold' as const,
     }
   })
+}
+
+export type ManagedDocument = {
+  id: string
+  name: string
+  type: string
+  status: string
+  detail: string
+  filePath: string
+  fileUrl: string
+  filedOn: string
+  customerId: string
+  customerName: string
+  serviceId: string
+  serviceLabel: string
+}
+
+export type DocumentCustomer = { id: string; name: string }
+export type DocumentService = { id: string; customerId: string; label: string }
+
+export async function getManagedDocuments(): Promise<{ documents: ManagedDocument[]; customers: DocumentCustomer[]; services: DocumentService[] } | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+
+  const [{ data: documents, error }, { data: customers }, { data: services }] = await Promise.all([
+    supabase.from('documents').select('id, name, doc_type, status, detail, file_path, filed_on, customer_id, service_id').order('filed_on', { ascending: false }),
+    supabase.from('customers').select('id, name').order('name'),
+    supabase.from('services').select('id, title, reference, customer_id').order('title'),
+  ])
+  if (error) return null
+
+  const customerName = new Map((customers ?? []).map((item) => [item.id, item.name]))
+  const serviceLabel = new Map((services ?? []).map((item) => [item.id, item.reference ? `${item.title} · ${item.reference}` : item.title]))
+  const links = await Promise.all((documents ?? []).map(async (item) => {
+    if (!item.file_path) return ''
+    const signed = await supabase.storage.from('documents').createSignedUrl(item.file_path, 60 * 60)
+    return signed.data?.signedUrl ?? ''
+  }))
+
+  return {
+    documents: (documents ?? []).map((item, index) => ({
+      id: item.id,
+      name: item.name,
+      type: item.doc_type,
+      status: item.status,
+      detail: item.detail,
+      filePath: item.file_path ?? '',
+      fileUrl: links[index],
+      filedOn: item.filed_on,
+      customerId: item.customer_id ?? '',
+      customerName: customerName.get(item.customer_id) ?? 'Customer',
+      serviceId: item.service_id ?? '',
+      serviceLabel: item.service_id ? serviceLabel.get(item.service_id) ?? 'Service' : '',
+    })),
+    customers: (customers ?? []).map((item) => ({ id: item.id, name: item.name })),
+    services: (services ?? []).map((item) => ({
+      id: item.id,
+      customerId: item.customer_id,
+      label: item.reference ? `${item.title} · ${item.reference}` : item.title,
+    })),
+  }
 }

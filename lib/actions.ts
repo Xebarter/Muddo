@@ -3,10 +3,12 @@
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { employmentTypes, jobSlug, jobStatuses, type JobStatus } from '@/lib/careers'
+import { documentStatuses } from '@/lib/documents'
 import { formatUgx, installmentStatuses, receiptStatuses, requestStatuses, todayInKampala } from '@/lib/format'
 import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestMobileMoneyPrompt } from '@/lib/mobile-money'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
 import { businesses } from '@/lib/businesses'
+import { formatUgandaPhone } from '@/lib/contact'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -600,20 +602,106 @@ export async function deleteProgressUpdate(id: string) {
   return {}
 }
 
-export async function createDocument(formData: FormData) {
+const documentFileTypes = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+
+function documentExtension(file: File) {
+  const fromName = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ?? ''
+  if (['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp'].includes(fromName)) return fromName === 'jpeg' ? 'jpg' : fromName
+  if (file.type === 'application/pdf') return 'pdf'
+  if (file.type === 'image/png') return 'png'
+  if (file.type === 'image/webp') return 'webp'
+  if (file.type === 'image/jpeg') return 'jpg'
+  return ''
+}
+
+async function storeDocumentFile(supabase: Awaited<ReturnType<typeof createClient>>, file: FormDataEntryValue | null) {
+  if (!(file instanceof File) || file.size === 0) return { path: '' }
+  const extension = documentExtension(file)
+  if ((!file.type || !documentFileTypes.has(file.type)) && !extension) return { error: 'Use a PDF, Word file, or image.' }
+  if (!extension || file.size > 10_000_000) return { error: 'Use a PDF, Word file, or image under 10 MB.' }
+  const path = `${Date.now()}-${randomBytes(4).toString('hex')}.${extension}`
+  const { error } = await supabase.storage.from('documents').upload(path, file, { contentType: file.type || 'application/octet-stream' })
+  if (error) return { error: 'The file could not be uploaded. The private documents bucket comes from 0001schem.sql.' }
+  return { path }
+}
+
+function refreshDocuments() {
+  revalidatePath('/admin/documents')
+  revalidatePath('/admin')
+  revalidatePath('/account/documents')
+  revalidatePath('/account')
+}
+
+export async function saveDocument(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
-  const { error } = await supabase.from('documents').insert({
-    customer_id: String(formData.get('customer_id') ?? ''),
-    service_id: String(formData.get('service_id') ?? '') || null,
-    name: String(formData.get('name') ?? '').trim(),
-    doc_type: String(formData.get('doc_type') ?? '').trim(),
-    detail: String(formData.get('detail') ?? '').trim(),
-    status: 'awaiting_review',
-  })
-  if (error) return { error: 'The document could not be filed.' }
-  revalidatePath('/admin/documents')
-  revalidatePath('/account/documents')
+
+  const id = String(formData.get('id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const docType = String(formData.get('doc_type') ?? '').trim()
+  const status = String(formData.get('status') ?? '')
+  const detail = String(formData.get('detail') ?? '').trim()
+  const customerId = String(formData.get('customer_id') ?? '')
+  const serviceId = String(formData.get('service_id') ?? '')
+  const filedOn = String(formData.get('filed_on') ?? '')
+  if (name.length < 2) return { error: 'Enter a document name.' }
+  if (docType.length < 2 || docType.length > 40) return { error: 'Choose a document type.' }
+  if (!documentStatuses.includes(status as typeof documentStatuses[number])) return { error: 'Choose a status.' }
+  if (!customerId) return { error: 'Choose a customer.' }
+  if (filedOn && !/^\d{4}-\d{2}-\d{2}$/.test(filedOn)) return { error: 'Enter a valid date.' }
+
+  if (serviceId) {
+    const { data: service, error: serviceError } = await supabase.from('services').select('id, customer_id').eq('id', serviceId).maybeSingle()
+    if (serviceError || !service || service.customer_id !== customerId) return { error: 'Choose a service for this customer.' }
+  }
+
+  const existing = id
+    ? await supabase.from('documents').select('id, file_path').eq('id', id).maybeSingle()
+    : null
+  if (id && (existing?.error || !existing?.data)) return { error: 'The document could not be found.' }
+
+  const uploaded = await storeDocumentFile(supabase, formData.get('file'))
+  if (uploaded.error) return { error: uploaded.error }
+  const removeFile = formData.get('remove_file') === 'on' && !uploaded.path
+  const filePath = uploaded.path || (removeFile ? null : existing?.data?.file_path ?? null)
+
+  const row = {
+    customer_id: customerId,
+    service_id: serviceId || null,
+    name,
+    doc_type: docType,
+    status,
+    detail,
+    filed_on: filedOn || todayInKampala(),
+    file_path: filePath,
+  }
+  const { error } = id
+    ? await supabase.from('documents').update(row).eq('id', id)
+    : await supabase.from('documents').insert(row)
+  if (error) return { error: 'The document could not be saved.' }
+
+  const previousPath = existing?.data?.file_path
+  if (previousPath && previousPath !== filePath) await supabase.storage.from('documents').remove([previousPath])
+  refreshDocuments()
+  return {}
+}
+
+export async function deleteDocument(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { data: existing, error: lookupError } = await supabase.from('documents').select('file_path').eq('id', id).maybeSingle()
+  if (lookupError || !existing) return { error: 'The document could not be found.' }
+  const { error } = await supabase.from('documents').delete().eq('id', id)
+  if (error) return { error: 'The document could not be deleted.' }
+  if (existing.file_path) await supabase.storage.from('documents').remove([existing.file_path])
+  refreshDocuments()
   return {}
 }
 
@@ -725,15 +813,57 @@ export async function saveHeroImage(formData: FormData) {
 export async function saveWorkspaceSettings(formData: FormData) {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
-  const { error } = await supabase.from('workspace_settings').upsert({
+
+  const workspaceName = String(formData.get('workspace_name') ?? '').trim()
+  const contactName = String(formData.get('contact_name') ?? '').trim()
+  const roleLabel = String(formData.get('role_label') ?? '').trim()
+  const notificationEmail = String(formData.get('notification_email') ?? '').trim().toLowerCase()
+  const publicEmail = String(formData.get('public_email') ?? '').trim().toLowerCase()
+  const phone = formatUgandaPhone(String(formData.get('phone') ?? ''))
+  const whatsappInput = String(formData.get('whatsapp') ?? '').trim()
+  const whatsapp = formatUgandaPhone(whatsappInput || String(formData.get('phone') ?? ''))
+  const address = String(formData.get('address') ?? '').trim()
+  const hours = String(formData.get('hours') ?? '').trim()
+
+  if (workspaceName.length < 2 || workspaceName.length > 80) return { error: 'Enter a workspace name.' }
+  if (contactName.length < 2 || contactName.length > 80) return { error: 'Enter the primary contact.' }
+  if (roleLabel.length < 2 || roleLabel.length > 40) return { error: 'Enter a role.' }
+  if (!paymentEmailPattern.test(notificationEmail)) return { error: 'Enter a notification email.' }
+  if (!paymentEmailPattern.test(publicEmail)) return { error: 'Enter the public email.' }
+  if (!phone) return { error: 'Enter a Uganda phone number.' }
+  if (!whatsapp) return { error: 'Enter a Uganda WhatsApp number.' }
+  if (address.length < 2 || address.length > 120) return { error: 'Enter an address.' }
+  if (hours.length > 80) return { error: 'Shorten the opening hours.' }
+
+  const record = {
     id: 1,
-    workspace_name: String(formData.get('workspace_name') ?? '').trim(),
-    contact_name: String(formData.get('contact_name') ?? '').trim(),
-    role_label: String(formData.get('role_label') ?? '').trim(),
-    notification_email: String(formData.get('notification_email') ?? '').trim(),
-  })
-  if (error) return { error: 'Settings could not be saved.' }
-  revalidatePath('/admin/settings')
+    workspace_name: workspaceName,
+    contact_name: contactName,
+    role_label: roleLabel,
+    notification_email: notificationEmail,
+    public_email: publicEmail,
+    phone,
+    whatsapp,
+    address,
+    hours,
+    updated_at: new Date().toISOString(),
+  }
+  const { error } = await supabase.from('workspace_settings').upsert(record)
+  if (error) {
+    const { error: basicError } = await supabase.from('workspace_settings').upsert({
+      id: 1,
+      workspace_name: workspaceName,
+      contact_name: contactName,
+      role_label: roleLabel,
+      notification_email: notificationEmail,
+      updated_at: new Date().toISOString(),
+    })
+    if (basicError) return { error: 'Settings could not be saved.' }
+    return { error: 'The workspace was saved. Run supabase/0007site-settings.sql, then save the public contact details.' }
+  }
+
+  revalidatePath('/', 'layout')
+  revalidatePath('/admin', 'layout')
   return {}
 }
 

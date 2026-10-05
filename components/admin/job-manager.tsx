@@ -14,10 +14,12 @@ export function JobManager({
   jobs,
   applications,
   unavailable,
+  defaultLocation = 'Kampala, Uganda',
 }: {
   jobs: ManagedJob[]
   applications: JobApplicationRecord[]
   unavailable?: boolean
+  defaultLocation?: string
 }) {
   const [editing, setEditing] = useState<ManagedJob | 'new' | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
@@ -55,6 +57,7 @@ export function JobManager({
         {editing && (
           <JobForm
             item={editing === 'new' ? null : editing}
+            defaultLocation={defaultLocation}
             onClose={() => setEditing(null)}
             onSaved={() => { setEditing(null); setNotice(editing === 'new' ? 'Role added.' : 'Role saved.') }}
           />
@@ -159,7 +162,7 @@ export function JobManager({
   )
 }
 
-function JobForm({ item, onClose, onSaved }: { item: ManagedJob | null; onClose: () => void; onSaved: () => void }) {
+function JobForm({ item, defaultLocation, onClose, onSaved }: { item: ManagedJob | null; defaultLocation: string; onClose: () => void; onSaved: () => void }) {
   const matched = businesses.find((business) => business.title.toLowerCase() === item?.division.toLowerCase())
   const [division, setDivision] = useState<string>(matched?.slug ?? businesses[0].slug)
   const [employmentType, setEmploymentType] = useState(item?.employmentType ?? employmentTypes[0])
@@ -203,7 +206,7 @@ function JobForm({ item, onClose, onSaved }: { item: ManagedJob | null; onClose:
         </label>
         <label className="flex flex-col gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">
           Location
-          <input name="location" required defaultValue={item?.location ?? 'Kampala, Uganda'} className="h-11 border border-brand-line px-3 text-sm font-medium normal-case tracking-normal text-brand-ink" />
+          <input name="location" required defaultValue={item?.location ?? defaultLocation} className="h-11 border border-brand-line px-3 text-sm font-medium normal-case tracking-normal text-brand-ink" />
         </label>
         <label className="flex flex-col gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-muted">
           Closing date

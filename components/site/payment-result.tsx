@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { SiteChrome } from '@/components/site/site-chrome'
+import { PublicSite } from '@/components/site/public-site'
 
 export function PaymentResult({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
   return (
-    <SiteChrome>
+    <PublicSite>
       <section className="mx-auto flex min-h-[70vh] max-w-xl flex-col justify-center px-5 py-28">
         <p className="eyebrow">{eyebrow}</p>
         <h1 className="mt-3 font-serif text-5xl tracking-[-0.04em]">{title}</h1>
@@ -12,6 +12,6 @@ export function PaymentResult({ eyebrow, title, text }: { eyebrow: string; title
           Payments
         </Link>
       </section>
-    </SiteChrome>
+    </PublicSite>
   )
 }

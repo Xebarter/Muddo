@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { SiteChrome } from '@/components/site/site-chrome'
+import { PublicSite } from '@/components/site/public-site'
 import { getPublicJobs } from '@/lib/data'
 import { formatLongDate } from '@/lib/format'
 
@@ -19,7 +19,7 @@ export default async function CareersPage() {
   const jobs = await getPublicJobs()
 
   return (
-    <SiteChrome>
+    <PublicSite>
       <section className="bg-[#15251f] px-5 pb-16 pt-32 text-white sm:pt-36 lg:px-8 lg:pb-24 lg:pt-44">
         <div className="mx-auto max-w-7xl">
           <p className="eyebrow text-[#d9bb7d]">Careers</p>
@@ -65,6 +65,6 @@ export default async function CareersPage() {
           </div>
         )}
       </section>
-    </SiteChrome>
+    </PublicSite>
   )
 }

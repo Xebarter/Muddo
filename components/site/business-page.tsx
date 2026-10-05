@@ -1,5 +1,6 @@
 import { ArrowRight, MoveUpRight } from 'lucide-react'
-import { RequestServiceButton, SiteChrome } from '@/components/site/site-chrome'
+import { PublicSite } from '@/components/site/public-site'
+import { RequestServiceButton } from '@/components/site/site-chrome'
 import { businesses, getBusiness } from '@/lib/businesses'
 
 const heroImage = '/mudogwaluyiira-hero.png'
@@ -9,7 +10,7 @@ export function BusinessPage({ slug }: { slug: string }) {
   const others = businesses.filter((item) => item.slug !== slug)
 
   return (
-    <SiteChrome>
+    <PublicSite>
       <section className="relative flex min-h-[560px] items-end overflow-hidden bg-[#15251f] pb-16 pt-36 text-white lg:min-h-[640px] lg:pb-24">
         <img src={heroImage} alt="" className="absolute inset-0 size-full object-cover opacity-45" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#15251f] via-[#15251f]/75 to-[#15251f]/20" />
@@ -67,6 +68,6 @@ export function BusinessPage({ slug }: { slug: string }) {
           </RequestServiceButton>
         </div>
       </section>
-    </SiteChrome>
+    </PublicSite>
   )
 }

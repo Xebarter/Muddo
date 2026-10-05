@@ -1,23 +1,18 @@
 import { AdminPageHeader } from '@/components/admin/admin-page'
 import { SettingsForm } from '@/components/admin/settings-form'
-import { getAdminSnapshot } from '@/lib/data'
+import { getSiteSettings } from '@/lib/data'
 
 export default async function SettingsPage() {
-  const snapshot = await getAdminSnapshot()
+  const settings = await getSiteSettings()
 
   return (
     <>
       <AdminPageHeader
         eyebrow="Workspace"
         title="Settings"
-        description="Review the operations workspace details used across the admin."
+        description="Set the workspace identity, the contact details on the public site, and the inbox for new messages and applications."
       />
-      <SettingsForm settings={snapshot?.settings ?? {
-        workspace_name: 'Mudogwaluyiira operations',
-        contact_name: 'Admin Manager',
-        role_label: 'Operations',
-        notification_email: 'muddogwaluyiiragroup@gmail.com',
-      }} />
+      <SettingsForm settings={settings} />
     </>
   )
 }

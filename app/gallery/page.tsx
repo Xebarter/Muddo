@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { PhotoGallery } from '@/components/site/photo-gallery'
-import { SiteChrome } from '@/components/site/site-chrome'
+import { PublicSite } from '@/components/site/public-site'
 import { getGalleryPhotos } from '@/lib/data'
 
 export const metadata: Metadata = {
@@ -13,7 +13,7 @@ export default async function GalleryPage() {
   const photos = gallery?.photos ?? []
 
   return (
-    <SiteChrome>
+    <PublicSite>
       <section className="bg-[#15251f] px-5 pb-12 pt-36 text-white lg:px-8 lg:pb-16 lg:pt-44">
         <div className="mx-auto max-w-7xl">
           <p className="eyebrow text-[#d9bb7d]">Gallery</p>
@@ -29,6 +29,6 @@ export default async function GalleryPage() {
           )}
         </div>
       </section>
-    </SiteChrome>
+    </PublicSite>
   )
 }

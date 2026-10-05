@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { JobApplicationForm } from '@/components/site/job-application-form'
-import { SiteChrome } from '@/components/site/site-chrome'
+import { PublicSite } from '@/components/site/public-site'
 import { getPublicJob } from '@/lib/data'
 import { formatLongDate } from '@/lib/format'
 
@@ -25,7 +25,7 @@ export default async function JobPage({ params }: Props) {
   const paragraphs = job.description.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
 
   return (
-    <SiteChrome>
+    <PublicSite>
       <section className="bg-[#15251f] px-5 pb-16 pt-32 text-white sm:pt-36 lg:px-8 lg:pb-24 lg:pt-44">
         <div className="mx-auto max-w-7xl">
           <Link href="/careers" className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d9bb7d]">All roles</Link>
@@ -59,6 +59,6 @@ export default async function JobPage({ params }: Props) {
           )}
         </div>
       </section>
-    </SiteChrome>
+    </PublicSite>
   )
 }

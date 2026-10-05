@@ -5,7 +5,7 @@ import { ArrowRight, Check, CircleUser, Menu, MoveUpRight, X } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/site/design-system'
 import { businesses } from '@/lib/businesses'
-import { companyEmail, companyEmailMailto, companyPhoneDisplay, companyPhoneTel } from '@/lib/contact'
+import { fallbackSiteContact, type SiteContact } from '@/lib/contact'
 import { submitServiceRequest } from '@/lib/actions'
 
 const navItems = [
@@ -35,7 +35,7 @@ export function RequestServiceButton({
   )
 }
 
-export function SiteChrome({ children, mobileDock = false }: { children: ReactNode; mobileDock?: boolean }) {
+export function SiteChrome({ children, mobileDock = false, contact = fallbackSiteContact }: { children: ReactNode; mobileDock?: boolean; contact?: SiteContact }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [requestOpen, setRequestOpen] = useState(false)
 
@@ -72,6 +72,7 @@ export function SiteChrome({ children, mobileDock = false }: { children: ReactNo
         </header>
         <MobileMenu
           open={menuOpen}
+          contact={contact}
           onClose={() => setMenuOpen(false)}
           onRequest={() => { setMenuOpen(false); setRequestOpen(true) }}
         />
@@ -111,9 +112,9 @@ export function SiteChrome({ children, mobileDock = false }: { children: ReactNo
               <div className="col-span-2 border-t border-white/10 pt-8 lg:col-span-4 lg:border-t-0 lg:pt-0">
                 <p className="footer-label">Contact</p>
                 <div className="mt-4 flex flex-col gap-4">
-                  <a href={companyPhoneTel} className="text-base text-white transition-colors hover:text-[#d9bb7d]">{companyPhoneDisplay}</a>
-                  <a href={companyEmailMailto} className="break-all text-sm transition-colors hover:text-[#d9bb7d] sm:break-normal">{companyEmail}</a>
-                  <p className="text-sm">Kampala, Uganda</p>
+                  <a href={contact.phoneTel} className="text-base text-white transition-colors hover:text-[#d9bb7d]">{contact.phoneDisplay}</a>
+                  <a href={`mailto:${contact.email}`} className="break-all text-sm transition-colors hover:text-[#d9bb7d] sm:break-normal">{contact.email}</a>
+                  <p className="text-sm">{contact.address}</p>
                 </div>
               </div>
             </div>
@@ -131,7 +132,7 @@ export function SiteChrome({ children, mobileDock = false }: { children: ReactNo
   )
 }
 
-function MobileMenu({ open, onClose, onRequest }: { open: boolean; onClose: () => void; onRequest: () => void }) {
+function MobileMenu({ open, contact, onClose, onRequest }: { open: boolean; contact: SiteContact; onClose: () => void; onRequest: () => void }) {
   const panelRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -232,7 +233,7 @@ function MobileMenu({ open, onClose, onRequest }: { open: boolean; onClose: () =
           <Button onClick={onRequest} className="mt-4 h-12 w-full rounded-none bg-[#c9a45c] text-[11px] font-bold uppercase tracking-[0.16em] text-[#15251f] hover:bg-[#dbbd7e]">
             Request a service <ArrowRight data-icon="inline-end" />
           </Button>
-          <p className="mt-5 text-[11px] leading-5 tracking-wide text-white/45">Kampala, Uganda<br /><a href={companyPhoneTel} className="transition-colors hover:text-[#d9bb7d]">{companyPhoneDisplay}</a><br /><a href={companyEmailMailto} className="transition-colors hover:text-[#d9bb7d]">{companyEmail}</a></p>
+          <p className="mt-5 text-[11px] leading-5 tracking-wide text-white/45">{contact.address}<br /><a href={contact.phoneTel} className="transition-colors hover:text-[#d9bb7d]">{contact.phoneDisplay}</a><br /><a href={`mailto:${contact.email}`} className="transition-colors hover:text-[#d9bb7d]">{contact.email}</a></p>
         </div>
       </aside>
     </div>
