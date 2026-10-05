@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { saveAdminForm, useAdminProgress } from '@/components/admin/save-progress'
 import { saveHeroImage } from '@/lib/actions'
 
@@ -58,7 +58,9 @@ export function HeroImageForm({ image, unavailable }: { image: string; unavailab
 
   return (
     <form
-      action={async (formData) => {
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
         setSaved(false)
         const result = await track((report) => saveAdminForm(report, formData, saveHeroImage))
         if (result.error) {

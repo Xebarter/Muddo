@@ -1,6 +1,6 @@
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { getAdminAuth } from '@/lib/firebase/admin'
+import { verifyFirebaseIdToken } from '@/lib/firebase/verify-id-token'
 
 const phoneDomain = '@phone.mudogwaluyiira.ug'
 
@@ -23,17 +23,18 @@ function adminEmails() {
 }
 
 export async function openFirebaseSession(idToken: string) {
-  const decoded = await getAdminAuth().verifyIdToken(idToken)
+  const decoded = await verifyFirebaseIdToken(idToken)
   const phone = decoded.phone_number ?? ''
   const email = (decoded.email ?? '').toLowerCase()
-  const name = typeof decoded.name === 'string' ? decoded.name : ''
-  const picture = typeof decoded.picture === 'string' ? decoded.picture : ''
+  const name = decoded.name ?? ''
+  const picture = decoded.picture ?? ''
 
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  )
+  let admin: ReturnType<typeof createAdminClient>
+  try {
+    admin = createAdminClient()
+  } catch {
+    return { error: 'Sign-in is not configured.' }
+  }
 
   const { data: profiles, error: profileError } = await admin.from('profiles').select('id, email, phone')
   if (profileError) return { error: 'The account directory is not ready. Run the Supabase script, then try again.' }

@@ -1,5 +1,6 @@
 'use client'
 
+import { type FormEvent } from 'react'
 import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 import { updateRequestStatus } from '@/lib/actions'
 
@@ -15,7 +16,14 @@ export function RequestStatusForm({ id, status }: { id: string; status: string }
   const { pending, track } = useAdminProgress()
 
   return (
-    <form action={async (formData) => { await track((report) => finishSave(report, () => updateRequestStatus(formData))) }} className="flex items-center gap-2">
+    <form
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
+        await track((report) => finishSave(report, () => updateRequestStatus(formData)))
+      }}
+      className="flex items-center gap-2"
+    >
       <input type="hidden" name="id" value={id} />
       <label className="sr-only" htmlFor={`status-${id}`}>Status</label>
       <select id={`status-${id}`} name="status" defaultValue={status} className="h-9 border border-brand-line bg-white px-2 text-xs text-brand-ink">

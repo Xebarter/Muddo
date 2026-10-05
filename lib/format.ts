@@ -11,6 +11,10 @@ export function formatShortUgx(amount: number) {
   return formatUgx(amount)
 }
 
+export function todayInKampala() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kampala' }).format(new Date())
+}
+
 export function formatLongDate(value: string | null | undefined) {
   if (!value) return ''
   return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' }).format(new Date(value))

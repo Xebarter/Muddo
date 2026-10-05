@@ -1,15 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { finishSave, saveAdminForm, useAdminProgress } from '@/components/admin/save-progress'
 import { businesses } from '@/lib/businesses'
-import { deleteContentItem, moveContentItem, saveContentItem, setContentStatus } from '@/lib/actions'
+import { moveContentItem, saveContentItem, setContentStatus } from '@/lib/actions'
 import type { ManagedContent } from '@/lib/data'
 
 const maxImageBytes = 5_000_000
 
 type Leave = { next: ManagedContent | 'new' | null }
+
+async function removeContent(kind: 'activity' | 'gallery', id: string) {
+  const response = await fetch('/api/admin/content', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, id }),
+  })
+  const payload = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) return { error: payload.error || 'The record could not be deleted.' }
+  return {}
+}
 
 export function ContentManager({
   kind,
@@ -28,6 +40,7 @@ export function ContentManager({
   const [leave, setLeave] = useState<Leave | null>(null)
   const dirtyRef = useRef(false)
   const leaveRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
   const { pending, track } = useAdminProgress()
   const noun = kind === 'activity' ? 'story' : 'image'
   const published = items.filter((item) => item.status === 'published').length
@@ -161,7 +174,26 @@ export function ContentManager({
                       </button>
                       {confirming === item.id ? (
                         <>
-                          <button type="button" disabled={pending} onClick={() => run(async () => { const result = await deleteContentItem(kind, item.id); if (!result.error) setConfirming(null); return result }, `${capitalize(noun)} deleted.`)} className="h-10 bg-red-800 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white disabled:opacity-50">Delete</button>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => {
+                              setError('')
+                              setNotice('')
+                              void track((report) => finishSave(report, () => removeContent(kind, item.id))).then((result) => {
+                                if (result.error) {
+                                  setError(result.error)
+                                  return
+                                }
+                                setConfirming(null)
+                                setNotice(`${capitalize(noun)} deleted.`)
+                                router.refresh()
+                              }).catch(() => setError('The record could not be deleted.'))
+                            }}
+                            className="h-10 bg-red-800 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
                           <button type="button" onClick={() => setConfirming(null)} className="h-10 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-muted">Cancel</button>
                         </>
                       ) : (
@@ -261,7 +293,9 @@ function ContentForm({
   return (
     <form
       ref={formRef}
-      action={async (formData) => {
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
         if (!valid) {
           setError(kind === 'activity' ? 'Enter a title and the story.' : 'Enter a title.')
           return

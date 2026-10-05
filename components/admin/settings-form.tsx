@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 import { saveWorkspaceSettings } from '@/lib/actions'
 
@@ -15,7 +15,9 @@ export function SettingsForm({
 
   return (
     <form
-      action={async (formData) => {
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
         const result = await track((report) => finishSave(report, () => saveWorkspaceSettings(formData)))
         if (result.error) {
           setError(result.error)

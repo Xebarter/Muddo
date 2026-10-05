@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 import { StatusBadge } from '@/components/site/design-system'
 import { deleteContactMessage, updateContactMessage } from '@/lib/actions'
@@ -52,7 +52,9 @@ export function ContactInbox({ messages, unavailable }: { messages: ContactMessa
               </div>
               <div className="flex flex-wrap items-start gap-2 lg:flex-col lg:items-stretch">
                 <form
-                  action={async (formData) => {
+                  onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+                    event.preventDefault()
+                    const formData = new FormData(event.currentTarget)
                     setError('')
                     const result = await track((report) => finishSave(report, () => updateContactMessage(formData)))
                     if (result.error) setError(result.error)

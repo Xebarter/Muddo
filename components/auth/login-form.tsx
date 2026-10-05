@@ -51,7 +51,7 @@ export function LoginForm() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
     })
-    const body = await response.json() as { error?: string; role?: string }
+    const body = await response.json().catch(() => ({})) as { error?: string; role?: string }
     if (!response.ok) throw new Error(body.error || 'The account could not be opened.')
 
     const next = searchParams.get('next')

@@ -2,7 +2,8 @@
 
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
-import { formatUgx } from '@/lib/format'
+import { employmentTypes, jobSlug, jobStatuses, type JobStatus } from '@/lib/careers'
+import { formatUgx, todayInKampala } from '@/lib/format'
 import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestMobileMoneyPrompt } from '@/lib/mobile-money'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
 import { businesses } from '@/lib/businesses'
@@ -534,15 +535,6 @@ export async function saveContentItem(formData: FormData) {
   return { id: data.id }
 }
 
-export async function deleteContentItem(kind: 'activity' | 'gallery', id: string) {
-  const { supabase, error: authError } = await requireAdmin()
-  if (authError) return { error: authError }
-  const { error } = await supabase.from(contentTable(kind)).delete().eq('id', id)
-  if (error) return { error: 'The record could not be deleted.' }
-  refreshContent()
-  return {}
-}
-
 export async function setContentStatus(kind: 'activity' | 'gallery', id: string, status: 'draft' | 'published') {
   const { supabase, error: authError } = await requireAdmin()
   if (authError) return { error: authError }
@@ -596,6 +588,142 @@ export async function saveWorkspaceSettings(formData: FormData) {
   })
   if (error) return { error: 'Settings could not be saved.' }
   revalidatePath('/admin/settings')
+  return {}
+}
+
+const cvTypes = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+])
+
+function careerAdmin() {
+  try {
+    return { admin: createAdminClient(), error: '' }
+  } catch {
+    return { admin: null, error: 'Applications are not ready.' }
+  }
+}
+
+export async function saveJob(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const id = String(formData.get('id') ?? '')
+  const title = String(formData.get('title') ?? '').trim()
+  const division = businesses.find((item) => item.slug === String(formData.get('division') ?? ''))
+  const location = String(formData.get('location') ?? '').trim()
+  const employmentType = String(formData.get('employment_type') ?? '')
+  const summary = String(formData.get('summary') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+  const closing = String(formData.get('closing_on') ?? '').trim()
+  const status = String(formData.get('status') ?? '')
+
+  if (title.length < 2) return { error: 'Enter a job title.' }
+  if (!division) return { error: 'Choose a division.' }
+  if (location.length < 2) return { error: 'Enter a location.' }
+  if (!employmentTypes.includes(employmentType as (typeof employmentTypes)[number])) return { error: 'Choose an employment type.' }
+  if (summary.length < 2) return { error: 'Enter a short summary.' }
+  if (description.length < 2) return { error: 'Enter the role description.' }
+  if (!jobStatuses.includes(status as JobStatus)) return { error: 'Choose a status.' }
+  if (closing && !/^\d{4}-\d{2}-\d{2}$/.test(closing)) return { error: 'Enter a closing date.' }
+
+  const record = {
+    title,
+    division: division.title,
+    location,
+    employment_type: employmentType,
+    summary,
+    description,
+    closing_on: closing || null,
+    status,
+  }
+
+  if (id) {
+    const { data, error } = await supabase.from('jobs').update(record).eq('id', id).select('slug').single()
+    if (error || !data) return { error: 'The role could not be saved. Run 0006careers.sql, then try again.' }
+    revalidatePath('/admin/careers')
+    revalidatePath('/careers')
+    revalidatePath(`/careers/${data.slug}`)
+    return { id }
+  }
+
+  let slug = jobSlug(title)
+  const { data: existing } = await supabase.from('jobs').select('slug').like('slug', `${slug}%`)
+  if ((existing ?? []).some((item) => item.slug === slug)) slug = `${slug}-${randomBytes(2).toString('hex')}`
+  const { data, error } = await supabase.from('jobs').insert({ ...record, slug }).select('id').single()
+  if (error || !data) return { error: 'The role could not be created. Run 0006careers.sql, then try again.' }
+  revalidatePath('/admin/careers')
+  revalidatePath('/careers')
+  return { id: data.id as string }
+}
+
+export async function deleteJob(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { error } = await supabase.from('jobs').delete().eq('id', id)
+  if (error) return { error: 'The role could not be deleted.' }
+  revalidatePath('/admin/careers')
+  revalidatePath('/careers')
+  return {}
+}
+
+export async function updateJobApplication(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const status = String(formData.get('status') ?? '')
+  if (!['new', 'reviewing', 'shortlisted', 'declined'].includes(status)) return { error: 'Choose a status.' }
+  const { error } = await supabase.from('job_applications').update({ status }).eq('id', String(formData.get('id') ?? ''))
+  if (error) return { error: 'The application could not be updated.' }
+  revalidatePath('/admin/careers')
+  return {}
+}
+
+export async function deleteJobApplication(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { error } = await supabase.from('job_applications').delete().eq('id', id)
+  if (error) return { error: 'The application could not be deleted.' }
+  revalidatePath('/admin/careers')
+  return {}
+}
+
+export async function submitJobApplication(formData: FormData) {
+  const { admin, error: readyError } = careerAdmin()
+  if (!admin) return { error: readyError }
+  const jobId = String(formData.get('job_id') ?? '')
+  const name = String(formData.get('full_name') ?? '').trim()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const phone = String(formData.get('phone') ?? '').trim()
+  const cover = String(formData.get('cover_letter') ?? '').trim()
+  const file = formData.get('cv')
+
+  if (name.length < 2) return { error: 'Enter your name.' }
+  if (!paymentEmailPattern.test(email)) return { error: 'Enter a valid email.' }
+  if (phone.replace(/\D/g, '').length < 9) return { error: 'Enter a phone number.' }
+  if (cover.length < 20) return { error: 'Write a short cover letter.' }
+  if (!(file instanceof File) || file.size === 0) return { error: 'Attach your CV.' }
+  if (!cvTypes.has(file.type) || file.size > 5_000_000) return { error: 'Attach a PDF or Word CV under 5 MB.' }
+
+  const { data: job, error: jobError } = await admin.from('jobs').select('id, slug, status, closing_on').eq('id', jobId).maybeSingle()
+  const today = todayInKampala()
+  if (jobError || !job || job.status !== 'published' || (job.closing_on && job.closing_on < today)) return { error: 'This role is not open.' }
+
+  const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf'
+  const path = `${job.id}/${Date.now()}-${randomBytes(4).toString('hex')}.${extension}`
+  const { error: uploadError } = await admin.storage.from('applications').upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type })
+  if (uploadError) return { error: 'The CV could not be saved. Run 0006careers.sql, then try again.' }
+
+  const { error } = await admin.from('job_applications').insert({
+    job_id: job.id,
+    full_name: name,
+    email,
+    phone,
+    cover_letter: cover,
+    cv_path: path,
+  })
+  if (error) return { error: 'The application could not be sent.' }
+  revalidatePath('/admin/careers')
+  revalidatePath(`/careers/${job.slug}`)
   return {}
 }
 

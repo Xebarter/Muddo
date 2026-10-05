@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { finishSave, saveAdminForm, useAdminProgress } from '@/components/admin/save-progress'
 import { businesses } from '@/lib/businesses'
@@ -157,7 +157,9 @@ function ServiceForm({
 
   return (
     <form
-      action={async (formData) => {
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
         const result = await track((report) => saveAdminForm(report, formData, saveService))
         if (result.error) {
           setError(result.error)

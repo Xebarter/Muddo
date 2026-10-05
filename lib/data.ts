@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import { businesses } from '@/lib/businesses'
+import { applicationStatuses, jobStatuses, type ApplicationStatus, type JobStatus } from '@/lib/careers'
 import { createClient } from '@/lib/supabase/server'
 import {
   customer,
@@ -14,6 +15,7 @@ import {
   documentLabel,
   formatLongDate,
   formatRequestWhen,
+  todayInKampala,
   formatShortUgx,
   formatUgx,
   installmentLabel,
@@ -532,4 +534,111 @@ export async function getManagedServices(): Promise<{ services: ManagedService[]
       }
     }),
   }
+}
+
+export type PublicJob = {
+  id: string
+  slug: string
+  title: string
+  division: string
+  location: string
+  employmentType: string
+  summary: string
+  description: string
+  closingOn: string
+  closed: boolean
+}
+
+export type ManagedJob = PublicJob & { status: JobStatus }
+
+export type JobApplicationRecord = {
+  id: string
+  jobId: string
+  jobTitle: string
+  name: string
+  email: string
+  phone: string
+  coverLetter: string
+  cvUrl: string
+  date: string
+  status: string
+  rawStatus: ApplicationStatus
+  tone: 'gold' | 'green' | 'muted'
+}
+
+function mapJob(item: { id: string; slug: string; title: string; division: string; location: string; employment_type: string; summary: string; description: string; closing_on: string | null; status: string }, today: string): PublicJob {
+  const closingOn = item.closing_on ?? ''
+  return {
+    id: item.id,
+    slug: item.slug,
+    title: item.title,
+    division: item.division,
+    location: item.location,
+    employmentType: item.employment_type,
+    summary: item.summary,
+    description: item.description,
+    closingOn,
+    closed: item.status === 'closed' || Boolean(closingOn && closingOn < today),
+  }
+}
+
+export async function getPublicJobs(): Promise<PublicJob[] | null> {
+  const supabase = await createClient()
+  const today = todayInKampala()
+  const { data, error } = await supabase.from('jobs').select('id, slug, title, division, location, employment_type, summary, description, closing_on, status').eq('status', 'published').order('created_at', { ascending: false })
+  if (error) return null
+  return (data ?? []).map((item) => mapJob(item, today)).filter((item) => !item.closed)
+}
+
+export async function getPublicJob(slug: string): Promise<PublicJob | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('jobs').select('id, slug, title, division, location, employment_type, summary, description, closing_on, status').eq('slug', slug).maybeSingle()
+  if (error || !data || (data.status !== 'published' && data.status !== 'closed')) return null
+  return mapJob(data, todayInKampala())
+}
+
+export async function getManagedJobs(): Promise<ManagedJob[] | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+  const { data, error } = await supabase.from('jobs').select('id, slug, title, division, location, employment_type, summary, description, closing_on, status').order('created_at', { ascending: false })
+  if (error) return null
+  const today = todayInKampala()
+  return (data ?? []).map((item) => ({
+    ...mapJob(item, today),
+    status: jobStatuses.includes(item.status as JobStatus) ? item.status as JobStatus : 'draft',
+  }))
+}
+
+export async function getJobApplications(): Promise<JobApplicationRecord[] | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+  const { data, error } = await supabase.from('job_applications').select('id, job_id, full_name, email, phone, cover_letter, cv_path, status, created_at, jobs(title)').order('created_at', { ascending: false })
+  if (error) return null
+  const rows = data ?? []
+  const links = await Promise.all(rows.map(async (item) => {
+    if (!item.cv_path) return ''
+    const signed = await supabase.storage.from('applications').createSignedUrl(item.cv_path, 60 * 60)
+    return signed.data?.signedUrl ?? ''
+  }))
+  return rows.map((item, index) => {
+    const rawStatus = applicationStatuses.includes(item.status as ApplicationStatus) ? item.status as ApplicationStatus : 'new'
+    const job = item.jobs as { title?: string } | { title?: string }[] | null
+    const jobTitle = Array.isArray(job) ? job[0]?.title : job?.title
+    return {
+      id: item.id,
+      jobId: item.job_id,
+      jobTitle: jobTitle || 'Role',
+      name: item.full_name,
+      email: item.email,
+      phone: item.phone,
+      coverLetter: item.cover_letter,
+      cvUrl: links[index],
+      date: formatRequestWhen(item.created_at),
+      status: rawStatus === 'shortlisted' ? 'Shortlisted' : rawStatus === 'reviewing' ? 'Reviewing' : rawStatus === 'declined' ? 'Declined' : 'New',
+      rawStatus,
+      tone: rawStatus === 'shortlisted' ? 'green' as const : rawStatus === 'declined' ? 'muted' as const : 'gold' as const,
+    }
+  })
 }

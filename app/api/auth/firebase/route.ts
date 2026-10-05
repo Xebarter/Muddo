@@ -19,7 +19,8 @@ export async function POST(request: Request) {
     const result = await openFirebaseSession(idToken)
     if (result.error) return Response.json({ error: result.error }, { status: 400 })
     return Response.json({ role: result.role })
-  } catch {
+  } catch (error) {
+    console.error('firebase session', error instanceof Error ? error.message : error)
     return Response.json({ error: 'Firebase could not confirm this sign-in.' }, { status: 401 })
   }
 }

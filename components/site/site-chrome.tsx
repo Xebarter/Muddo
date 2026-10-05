@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowRight, Check, CircleUser, Menu, MoveUpRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BrandMark } from '@/components/site/design-system'
@@ -12,8 +12,7 @@ const navItems = [
   { label: 'About Us', href: '/#about-us' },
   { label: 'Our Businesses', href: '/#our-businesses' },
   { label: 'Projects', href: '/#projects' },
-  { label: 'News', href: '/#news' },
-  { label: 'Careers', href: '/#careers' },
+  { label: 'Careers', href: '/careers' },
   { label: 'Contact', href: '/contact' },
 ]
 
@@ -88,6 +87,7 @@ export function SiteChrome({ children, mobileDock = false }: { children: ReactNo
               <div className="mt-5 flex flex-col gap-3 text-sm">
                 <a href="/#about-us">About us</a>
                 <a href="/#projects">Projects</a>
+                <a href="/careers">Careers</a>
                 <a href="/contact">Contact</a>
               </div>
               <p className="footer-label mt-8">Businesses</p>
@@ -248,7 +248,9 @@ function RequestModal({ onClose }: { onClose: () => void }) {
             <h2 className="mt-2 font-serif text-3xl">Request a service</h2>
             <p className="mt-3 text-sm text-[#65736d]">Tell us a little about what you need and the right team will follow up.</p>
             <form
-              action={async (formData) => {
+              onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+                event.preventDefault()
+                const formData = new FormData(event.currentTarget)
                 const result = await submitServiceRequest(formData)
                 if (result.error || !result.reference) {
                   setError(result.error ?? 'The request could not be saved.')

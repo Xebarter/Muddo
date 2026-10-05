@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { finishSave, useAdminProgress } from '@/components/admin/save-progress'
 
 export function SimpleCreateForm({
@@ -20,7 +20,9 @@ export function SimpleCreateForm({
 
   return (
     <form
-      action={async (formData) => {
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
         const result = await track((report) => finishSave(report, () => action(formData)))
         if (result?.error) {
           setError(result.error)
