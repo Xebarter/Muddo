@@ -238,6 +238,38 @@ export type PublicContent = {
 
 const defaultHeroImage = '/mudogwaluyiira-hero.png'
 
+export type GalleryPhoto = { id: string; image: string }
+
+export function uniquePhotos(photos: GalleryPhoto[]) {
+  const seen = new Set<string>()
+  return photos.filter((photo) => {
+    if (!photo.image || seen.has(photo.image)) return false
+    seen.add(photo.image)
+    return true
+  })
+}
+
+export const getGalleryPhotos = cache(async (): Promise<{ photos: GalleryPhoto[]; work: GalleryPhoto[]; uploads: GalleryPhoto[] } | null> => {
+  const supabase = await createClient()
+  const [{ data: activities, error: activityError }, { data: uploads, error: uploadError }] = await Promise.all([
+    supabase.from('homepage_activities').select('id, image_path, sort_order').eq('status', 'published').order('sort_order'),
+    supabase.from('gallery_items').select('id, image_path, sort_order, status').order('sort_order'),
+  ])
+  if (activityError || uploadError) return null
+  const work = uniquePhotos((activities ?? []).map((item) => ({ id: `work-${item.id}`, image: item.image_path })))
+  const seen = new Set(work.map((photo) => photo.image))
+  const extra = (uploads ?? []).flatMap((item) => {
+    if (item.status !== 'published' || !item.image_path || seen.has(item.image_path)) return []
+    seen.add(item.image_path)
+    return [{ id: item.id, image: item.image_path }]
+  })
+  return {
+    work,
+    uploads: (uploads ?? []).flatMap((item) => (item.image_path ? [{ id: item.id, image: item.image_path }] : [])),
+    photos: [...work, ...extra],
+  }
+})
+
 export const getHomepageHero = cache(async (): Promise<{ image: string; unavailable: boolean }> => {
   const supabase = await createClient()
   const { data, error } = await supabase.from('homepage_settings').select('hero_image_path').eq('id', 1).maybeSingle()
@@ -373,7 +405,7 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
     }),
     documents: (documents.data ?? []).map((item) => `${item.name} · ${customerName.get(item.customer_id) ?? 'Customer'} · ${documentLabel(item.status)}`),
     activities: (activities.data ?? []).map((item) => `${item.category} · ${item.title} · ${item.status === 'published' ? 'Published' : 'Draft'}`),
-    gallery: (gallery.data ?? []).map((item) => `${item.title} · ${item.category} · ${item.status === 'published' ? 'Published' : 'Draft'}`),
+    gallery: (gallery.data ?? []).map((item) => `Photo · ${item.status === 'published' ? 'Published' : 'Draft'}`),
     settings: settings.data ?? {
       workspace_name: 'Mudogwaluyiira operations',
       contact_name: 'Admin Manager',
@@ -390,6 +422,117 @@ export const getAdminSnapshot = cache(async (): Promise<AdminSnapshot | null> =>
       documentsToReview: String(reviewDocs),
       completed: String(completed),
     },
+  }
+})
+
+export type LedgerInstallment = {
+  id: string
+  serviceId: string
+  serviceLabel: string
+  customerName: string
+  name: string
+  amount: number
+  dueOn: string
+  paidOn: string
+  method: string
+  status: 'paid' | 'due' | 'due_soon' | 'pending' | 'failed'
+  reference: string
+}
+
+export type LedgerReceipt = {
+  id: string
+  customerId: string
+  customerName: string
+  email: string
+  phone: string
+  amount: number
+  method: string
+  status: 'pending' | 'paid' | 'failed'
+  reference: string
+  createdOn: string
+}
+
+export type PaymentLedgerData = {
+  installments: LedgerInstallment[]
+  receipts: LedgerReceipt[]
+  services: { id: string; label: string }[]
+  customers: { id: string; name: string; email: string; phone: string }[]
+  collected: number
+  outstanding: number
+}
+
+const installmentStatusList = ['paid', 'due', 'due_soon', 'pending', 'failed'] as const
+const receiptStatusList = ['pending', 'paid', 'failed'] as const
+
+export const getPaymentLedger = cache(async (): Promise<PaymentLedgerData | null> => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.app_metadata?.role !== 'admin') return null
+
+  const [installments, receipts, services, customers] = await Promise.all([
+    supabase.from('installments').select('id, service_id, name, amount, due_on, paid_on, method, status, reference'),
+    supabase.from('mobile_payments').select('id, customer_id, email, phone, amount, method, status, reference, created_at').order('created_at', { ascending: false }),
+    supabase.from('services').select('id, reference, title, customer_id').order('reference'),
+    supabase.from('customers').select('id, full_name, email, phone').order('full_name'),
+  ])
+  if (installments.error || receipts.error || services.error || customers.error) return null
+
+  const customerRows = customers.data ?? []
+  const customerName = new Map(customerRows.map((item) => [item.id, item.full_name]))
+  const customerByEmail = new Map(customerRows.map((item) => [item.email.toLowerCase(), item.full_name]))
+  const serviceRows = services.data ?? []
+  const serviceById = new Map(serviceRows.map((item) => [item.id, item]))
+  const statusRank: Record<string, number> = { due_soon: 0, due: 1, pending: 2, failed: 3, paid: 4 }
+
+  const ledgerInstallments = (installments.data ?? []).map((item) => {
+    const service = serviceById.get(item.service_id)
+    const status = installmentStatusList.includes(item.status as (typeof installmentStatusList)[number]) ? item.status as LedgerInstallment['status'] : 'due'
+    return {
+      id: item.id,
+      serviceId: item.service_id,
+      serviceLabel: service ? `${service.reference} · ${service.title}` : 'Service',
+      customerName: service ? customerName.get(service.customer_id) ?? 'Customer' : 'Customer',
+      name: item.name,
+      amount: Number(item.amount),
+      dueOn: item.due_on,
+      paidOn: item.paid_on ?? '',
+      method: item.method ?? '',
+      status,
+      reference: item.reference,
+    }
+  }).sort((a, b) => (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9) || a.dueOn.localeCompare(b.dueOn))
+
+  const ledgerReceipts = (receipts.data ?? []).map((item) => {
+    const status = receiptStatusList.includes(item.status as (typeof receiptStatusList)[number]) ? item.status as LedgerReceipt['status'] : 'pending'
+    return {
+      id: item.id,
+      customerId: item.customer_id ?? '',
+      customerName: (item.customer_id && customerName.get(item.customer_id)) || customerByEmail.get(item.email.toLowerCase()) || item.email,
+      email: item.email,
+      phone: item.phone,
+      amount: Number(item.amount),
+      method: item.method,
+      status,
+      reference: item.reference,
+      createdOn: item.created_at,
+    }
+  })
+
+  const collected = ledgerInstallments.filter((item) => item.status === 'paid').reduce((sum, item) => sum + item.amount, 0)
+    + ledgerReceipts.filter((item) => item.status === 'paid').reduce((sum, item) => sum + item.amount, 0)
+  const outstanding = ledgerInstallments.filter((item) => item.status !== 'paid').reduce((sum, item) => sum + item.amount, 0)
+    + ledgerReceipts.filter((item) => item.status === 'pending').reduce((sum, item) => sum + item.amount, 0)
+
+  return {
+    installments: ledgerInstallments,
+    receipts: ledgerReceipts,
+    services: serviceRows.map((item) => ({
+      id: item.id,
+      label: `${item.reference} · ${item.title} · ${customerName.get(item.customer_id) ?? 'Customer'}`,
+    })),
+    customers: customerRows.map((item) => ({ id: item.id, name: item.full_name, email: item.email, phone: item.phone })),
+    collected,
+    outstanding,
   }
 })
 

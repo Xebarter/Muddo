@@ -29,6 +29,7 @@ export async function DELETE(request: Request) {
   if (error) return Response.json({ error: 'The record could not be deleted.' }, { status: 400 })
 
   revalidatePath('/')
+  revalidatePath('/gallery')
   revalidatePath('/admin/homepage')
   revalidatePath('/admin/gallery')
   return Response.json({ ok: true })

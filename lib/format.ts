@@ -58,10 +58,14 @@ export function paymentLabel(status: string) {
   return 'Due'
 }
 
+export const installmentStatuses = ['paid', 'due', 'due_soon', 'pending', 'failed'] as const
+export const receiptStatuses = ['pending', 'paid', 'failed'] as const
+
 export function installmentLabel(status: string) {
   if (status === 'paid') return 'Paid'
   if (status === 'due_soon') return 'Due soon'
   if (status === 'pending') return 'Pending'
+  if (status === 'failed') return 'Failed'
   return 'Due'
 }
 

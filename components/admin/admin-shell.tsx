@@ -31,7 +31,7 @@ const navigation = [
   { label: 'Payments', href: '/admin/payments', icon: WalletCards },
   { label: 'Progress updates', href: '/admin/progress', icon: Activity },
   { label: 'Documents', href: '/admin/documents', icon: FileText },
-  { label: 'Homepage content', href: '/admin/homepage', icon: LayoutDashboard },
+  { label: 'What we Do', href: '/admin/homepage', icon: LayoutDashboard },
   { label: 'Gallery', href: '/admin/gallery', icon: Images },
   { label: 'Messages', href: '/admin/messages', icon: Mail },
   { label: 'Careers', href: '/admin/careers', icon: Briefcase },

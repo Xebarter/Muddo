@@ -3,7 +3,7 @@
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { employmentTypes, jobSlug, jobStatuses, type JobStatus } from '@/lib/careers'
-import { formatUgx, todayInKampala } from '@/lib/format'
+import { formatUgx, installmentStatuses, receiptStatuses, todayInKampala } from '@/lib/format'
 import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestMobileMoneyPrompt } from '@/lib/mobile-money'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
 import { businesses } from '@/lib/businesses'
@@ -724,6 +724,147 @@ export async function submitJobApplication(formData: FormData) {
   if (error) return { error: 'The application could not be sent.' }
   revalidatePath('/admin/careers')
   revalidatePath(`/careers/${job.slug}`)
+  return {}
+}
+
+function refreshPayments() {
+  revalidatePath('/admin/payments')
+  revalidatePath('/admin')
+  revalidatePath('/account')
+  revalidatePath('/account/payments')
+}
+
+function ledgerAmount(value: FormDataEntryValue | null) {
+  const digits = String(value ?? '').replace(/[^\d]/g, '')
+  if (!digits) return null
+  const amount = Number(digits)
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1_000_000_000) return null
+  return amount
+}
+
+function ledgerReference(prefix: string, value: string) {
+  const cleaned = value.trim().toUpperCase().replace(/\s+/g, '-')
+  if (!cleaned) return `${prefix}-${randomBytes(4).toString('hex').toUpperCase()}`
+  if (!/^[A-Z0-9-]{4,40}$/.test(cleaned)) return ''
+  return cleaned
+}
+
+function paymentError(error: { code?: string } | null, fallback: string) {
+  if (!error) return ''
+  if (error.code === '23505') return 'That reference is already in use.'
+  if (error.code === '23503') return 'Choose a record that still exists.'
+  return fallback
+}
+
+export async function saveInstallment(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+
+  const id = String(formData.get('id') ?? '')
+  const serviceId = String(formData.get('service_id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const amount = ledgerAmount(formData.get('amount'))
+  const dueOn = String(formData.get('due_on') ?? '')
+  const status = String(formData.get('status') ?? '')
+  const method = String(formData.get('method') ?? '').trim()
+  const paidOnInput = String(formData.get('paid_on') ?? '').trim()
+  const reference = ledgerReference('MG-INS', String(formData.get('reference') ?? ''))
+
+  if (!serviceId) return { error: 'Choose a service.' }
+  if (name.length < 2) return { error: 'Enter a payment name.' }
+  if (amount === null) return { error: 'Enter an amount in whole shillings.' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) return { error: 'Enter a due date.' }
+  if (!installmentStatuses.includes(status as (typeof installmentStatuses)[number])) return { error: 'Choose a status.' }
+  if (method.length > 40) return { error: 'Enter a shorter payment method.' }
+  if (!reference) return { error: 'Use letters, numbers and hyphens for the reference.' }
+  if (paidOnInput && !/^\d{4}-\d{2}-\d{2}$/.test(paidOnInput)) return { error: 'Enter the date it was paid.' }
+
+  const record = {
+    service_id: serviceId,
+    name,
+    amount,
+    due_on: dueOn,
+    paid_on: status === 'paid' ? (paidOnInput || todayInKampala()) : null,
+    method: method || null,
+    status,
+    reference,
+  }
+
+  if (id) {
+    const { error } = await supabase.from('installments').update(record).eq('id', id)
+    const message = paymentError(error, 'The installment could not be saved.')
+    if (message) return { error: message }
+  } else {
+    const { count } = await supabase.from('installments').select('id', { count: 'exact', head: true }).eq('service_id', serviceId)
+    const { error } = await supabase.from('installments').insert({ ...record, sort_order: (count ?? 0) + 1 })
+    const message = paymentError(error, 'The installment could not be saved.')
+    if (message) return { error: message }
+  }
+
+  refreshPayments()
+  return {}
+}
+
+export async function deleteInstallment(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { data, error: readError } = await supabase.from('installments').select('status').eq('id', id).maybeSingle()
+  if (readError || !data) return { error: 'The installment could not be deleted.' }
+  if (data.status === 'paid') return { error: 'A completed payment cannot be deleted.' }
+  const { error } = await supabase.from('installments').delete().eq('id', id).neq('status', 'paid')
+  if (error) return { error: 'The installment could not be deleted.' }
+  refreshPayments()
+  return {}
+}
+
+export async function saveMobilePayment(formData: FormData) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+
+  const id = String(formData.get('id') ?? '')
+  const customerId = String(formData.get('customer_id') ?? '')
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const phone = String(formData.get('phone') ?? '').trim()
+  const amount = ledgerAmount(formData.get('amount'))
+  const method = String(formData.get('method') ?? '').trim()
+  const status = String(formData.get('status') ?? '')
+  const reference = ledgerReference('MG-PAY', String(formData.get('reference') ?? ''))
+
+  if (!paymentEmailPattern.test(email)) return { error: 'Enter a valid email.' }
+  if (phone.replace(/\D/g, '').length < 9) return { error: 'Enter a phone number.' }
+  if (amount === null) return { error: 'Enter an amount in whole shillings.' }
+  if (method.length < 2 || method.length > 40) return { error: 'Enter a payment method.' }
+  if (!receiptStatuses.includes(status as (typeof receiptStatuses)[number])) return { error: 'Choose a status.' }
+  if (!reference) return { error: 'Use letters, numbers and hyphens for the reference.' }
+
+  const record = {
+    customer_id: customerId || null,
+    email,
+    phone,
+    amount,
+    method,
+    status,
+    reference,
+  }
+
+  const { error } = id
+    ? await supabase.from('mobile_payments').update(record).eq('id', id)
+    : await supabase.from('mobile_payments').insert(record)
+  const message = paymentError(error, 'The receipt could not be saved.')
+  if (message) return { error: message }
+  refreshPayments()
+  return {}
+}
+
+export async function deleteMobilePayment(id: string) {
+  const { supabase, error: authError } = await requireAdmin()
+  if (authError) return { error: authError }
+  const { data, error: readError } = await supabase.from('mobile_payments').select('status').eq('id', id).maybeSingle()
+  if (readError || !data) return { error: 'The receipt could not be deleted.' }
+  if (data.status === 'paid') return { error: 'A completed payment cannot be deleted.' }
+  const { error } = await supabase.from('mobile_payments').delete().eq('id', id).neq('status', 'paid')
+  if (error) return { error: 'The receipt could not be deleted.' }
+  refreshPayments()
   return {}
 }
 

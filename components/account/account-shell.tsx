@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bell, FileText, Home, LayoutDashboard, Menu, ShieldCheck, User, WalletCards, X } from 'lucide-react'
+import { ArrowLeft, Bell, FileText, Home, LayoutDashboard, Menu, ShieldCheck, User, WalletCards, X } from 'lucide-react'
 import { BrandMark } from '@/components/site/design-system'
 import { SignOutButton } from '@/components/auth/sign-out-button'
 import { ProfileProvider, useProfile } from '@/components/account/profile-context'
@@ -51,19 +51,19 @@ function AccountFrame({ children, unread }: { children: React.ReactNode; unread:
 
   return (
     <main className="min-h-screen bg-brand-surface text-brand-ink">
-      <header className="sticky top-0 z-30 border-b border-brand-line bg-white/95 backdrop-blur-md">
-        <div className="flex h-20 items-center justify-between gap-4 px-5 md:px-8">
+      <header className="sticky top-0 z-30 border-b border-brand-line bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+        <div className="flex h-16 items-center justify-between gap-2 px-4 sm:h-20 sm:gap-4 sm:px-5 md:px-8">
           <Link href="/" aria-label="Mudogwaluyiira Group home" className="min-w-0">
-            <BrandMark />
+            <BrandMark size="sm" />
           </Link>
-          <div className="flex items-center gap-1">
-            <Link href="/account/notifications" aria-label={`Notifications, ${unread} unread`} className="relative hidden size-11 items-center justify-center text-brand-muted transition-colors hover:text-brand-ink sm:flex">
+          <div className="flex shrink-0 items-center">
+            <Link href="/account/notifications" aria-label={`Notifications, ${unread} unread`} className="relative flex size-11 items-center justify-center text-brand-muted transition-colors hover:text-brand-ink">
               <Bell size={18} strokeWidth={1.5} />
               {unread > 0 && <span className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-brand-gold-deep" />}
             </Link>
-            <Link href="/account/profile" className="hidden items-center gap-3 border-l border-brand-line pl-4 transition-colors hover:text-brand-gold-deep sm:flex">
+            <Link href="/account/profile" className="flex items-center gap-3 transition-colors hover:text-brand-gold-deep sm:border-l sm:border-brand-line sm:pl-4">
               <ProfilePhoto src={profile.avatar} size={36} />
-              <div>
+              <div className="hidden sm:block">
                 <p className="text-xs font-semibold">{profile.name}</p>
                 <p className="mt-0.5 text-[10px] uppercase tracking-wider text-brand-muted">{role}</p>
               </div>
@@ -87,7 +87,7 @@ function AccountFrame({ children, unread }: { children: React.ReactNode; unread:
         <aside className="sticky top-20 hidden h-[calc(100dvh-5rem)] w-72 shrink-0 flex-col bg-[#101c17] text-white md:flex">
           <AccountNav pathname={pathname} unread={unread} showIntro />
         </aside>
-        <section className="min-w-0 flex-1 px-5 py-8 md:px-10 md:py-12">{children}</section>
+        <section className="min-w-0 flex-1 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-8 md:px-10 md:py-12">{children}</section>
       </div>
 
       <AccountDrawer open={menuOpen} onClose={closeMenu} onNavigate={dismissMenu} pathname={pathname} unread={unread} />
@@ -116,7 +116,15 @@ function AccountNav({ pathname, unread, onNavigate, motion, showIntro = false }:
         ))}
       </nav>
       <div className="shrink-0 border-t border-white/10 px-6 py-5">
-        <div className="flex items-start gap-3">
+        <Link
+          href="/"
+          onClick={onNavigate}
+          className="flex h-11 items-center justify-center gap-2 border border-white/15 text-[10px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:border-brand-gold-light hover:text-brand-gold-light"
+        >
+          <ArrowLeft size={14} strokeWidth={1.5} />
+          Back to Home
+        </Link>
+        <div className="mt-5 flex items-start gap-3">
           <ShieldCheck className="mt-0.5 text-brand-gold-light" size={17} strokeWidth={1.5} />
           <div>
             <p className="text-xs font-semibold">Secure account</p>
@@ -225,7 +233,7 @@ function AccountDrawer({ open, onClose, onNavigate, pathname, unread }: { open: 
             <X strokeWidth={1.5} />
           </button>
         </div>
-        <AccountNav pathname={pathname} unread={unread} onNavigate={onNavigate} motion={open} />
+        <AccountNav pathname={pathname} unread={unread} onNavigate={onNavigate} motion={open} showIntro />
       </aside>
     </div>
   )

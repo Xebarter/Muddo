@@ -10,8 +10,8 @@ import { submitServiceRequest } from '@/lib/actions'
 
 const navItems = [
   { label: 'About Us', href: '/#about-us' },
-  { label: 'Our Businesses', href: '/#our-businesses' },
-  { label: 'Projects', href: '/#projects' },
+  { label: 'What We Do', href: '/what-we-do' },
+  { label: 'Gallery', href: '/gallery' },
   { label: 'Careers', href: '/careers' },
   { label: 'Contact', href: '/contact' },
 ]
@@ -86,11 +86,12 @@ export function SiteChrome({ children, mobileDock = false }: { children: ReactNo
               <p className="footer-label">Explore</p>
               <div className="mt-5 flex flex-col gap-3 text-sm">
                 <a href="/#about-us">About us</a>
-                <a href="/#projects">Projects</a>
+                <a href="/what-we-do">What we do</a>
+                <a href="/gallery">Gallery</a>
                 <a href="/careers">Careers</a>
                 <a href="/contact">Contact</a>
               </div>
-              <p className="footer-label mt-8">Businesses</p>
+              <p className="footer-label mt-8">What we do</p>
               <div className="mt-5 flex flex-col gap-3 text-sm">
                 {businesses.map((business) => (
                   <a key={business.slug} href={`/businesses/${business.slug}`}>{business.title}</a>
@@ -206,7 +207,7 @@ function MobileMenu({ open, onClose, onRequest }: { open: boolean; onClose: () =
               <MoveUpRight className="size-4 shrink-0 text-white/25 transition-colors group-hover:text-[#d9bb7d]" />
             </a>
           ))}
-          <p className="mt-8 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#d9bb7d]">Businesses</p>
+          <p className="mt-8 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#d9bb7d]">What we do</p>
           {businesses.map((business) => (
             <a key={business.slug} href={`/businesses/${business.slug}`} onClick={onClose} className="border-b border-white/10 py-3 text-sm text-white/80 transition-colors hover:text-[#d9bb7d]">
               {business.title}

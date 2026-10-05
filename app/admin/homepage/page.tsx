@@ -10,11 +10,11 @@ export default async function HomepageContentPage() {
     <>
       <AdminPageHeader
         eyebrow="Public website"
-        title="Homepage"
-        description="Set the hero image, then write, reorder and publish the stories that introduce each business."
+        title="What we Do"
+        description="Set the hero image, then write, reorder and publish the stories that introduce each business. Published stories appear on What we do and on the homepage."
         action={
-          <a href="/" target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center justify-center border border-brand-line bg-white px-5 text-xs font-bold uppercase tracking-[0.12em] hover:border-brand-ink">
-            View homepage
+          <a href="/what-we-do" target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center justify-center border border-brand-line bg-white px-5 text-xs font-bold uppercase tracking-[0.12em] hover:border-brand-ink">
+            View page
           </a>
         }
       />

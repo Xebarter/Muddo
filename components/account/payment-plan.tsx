@@ -36,7 +36,7 @@ export function PaymentPlan({
   summary?: typeof demoSummary
   activeService?: { title: string; reference: string }
 }) {
-  const dueInstallment = rows.find((item) => item.status === 'Due soon' || item.status === 'Due' || item.status === 'Pending')
+  const dueInstallment = rows.find((item) => item.status === 'Due soon' || item.status === 'Due' || item.status === 'Pending' || item.status === 'Failed')
   const [receiptReference, setReceiptReference] = useState<string | null>(null)
   const [paying, setPaying] = useState(false)
   const [pending, setPending] = useState<PendingPayment | null>(null)
