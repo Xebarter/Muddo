@@ -6,9 +6,9 @@ export const metadata: Metadata = { title: 'Payment cancelled | Mudogwaluyiira G
 export default function PaymentCancelPage() {
   return (
     <PaymentResult
-      eyebrow="Mobile Money"
-      title="Cancelled."
-      text="Not paid."
+      eyebrow="Payment"
+      title="Cancelled"
+      text="The payment was cancelled. Open your payments and try again."
     />
   )
 }

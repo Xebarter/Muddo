@@ -11,6 +11,7 @@ type Purchase = {
   status?: string
   reference?: string
   event_type?: string
+  checkout_url?: string
   details?: { return_code?: string | number; message?: string; transaction?: { status?: string } }
 }
 
@@ -94,6 +95,64 @@ export async function requestMobileMoneyPrompt(input: {
   return { id: purchase.id, status: executionStatus || 'pending' }
 }
 
+export async function requestCardCheckout(input: {
+  amount: number
+  email: string
+  name: string
+  phone: string
+  city: string
+  description: string
+  reference: string
+  returnReference: string
+}) {
+  const base = (process.env.PAYTOTA_BASE_URL || '').replace(/\/$/, '')
+  const secret = process.env.PAYTOTA_SECRET_KEY
+  const brandId = process.env.PAYTOTA_BRAND_ID
+  if (!base || !secret || !brandId) return { error: 'Payments are not ready.' as const }
+
+  const site = (process.env.NEXT_PUBLIC_APP_URL || process.env.SITE_URL || 'https://muddogroup.com').replace(/\/$/, '')
+  const place = input.city.trim().slice(0, 40) || 'Kampala'
+  const receiptReference = /^[A-Za-z0-9-]{4,40}$/.test(input.returnReference) ? input.returnReference : ''
+  const client: Record<string, string> = {
+    email: input.email,
+    full_name: input.name,
+    country: 'UG',
+    city: place,
+    state: place,
+    street_address: place,
+    zip_code: '256',
+  }
+  if (input.phone) client.phone = input.phone
+  const created = await fetch(`${base}/api/v1/purchases/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      client,
+      purchase: {
+        currency: 'UGX',
+        products: [{ name: input.description.slice(0, 80) || 'Mudogwaluyiira payment', price: input.amount }],
+      },
+      reference: input.reference,
+      brand_id: brandId,
+      skip_capture: false,
+      success_redirect: receiptReference
+        ? `${site}/payments/success?reference=${encodeURIComponent(receiptReference)}`
+        : (process.env.PAYTOTA_SUCCESS_REDIRECT || `${site}/payments/success`),
+      failure_redirect: process.env.PAYTOTA_FAILURE_REDIRECT || `${site}/payments/failure`,
+      cancel_redirect: process.env.PAYTOTA_CANCEL_REDIRECT || `${site}/payments/cancel`,
+      success_callback: `${site}${process.env.PAYTOTA_WEBHOOK_PATH || '/api/paytota/webhook'}`,
+    }),
+  })
+
+  const purchase = await readJson(created)
+  const checkoutUrl = trustedCheckoutUrl(purchase?.checkout_url)
+  if (!created.ok || !purchase?.id || !checkoutUrl) return { error: 'The card payment could not be started.' as const }
+  return { id: purchase.id, checkoutUrl }
+}
+
 export async function readMobileMoneyPurchase(id: string) {
   const base = (process.env.PAYTOTA_BASE_URL || '').replace(/\/$/, '')
   const secret = process.env.PAYTOTA_SECRET_KEY
@@ -148,16 +207,17 @@ export async function applyMobileMoneyUpdate(purchase: Purchase) {
     provider_status: purchase.status || purchase.event_type || '',
   }).eq('id', attempt.id)
 
+  const method = attempt.method === 'Card' ? 'Card' : 'Mobile Money'
   if (state === 'paid') {
     await admin.from('installments').update({
       status: 'paid',
       paid_on: kampalaDate(),
-      method: 'Mobile Money',
+      method,
     }).eq('id', attempt.installment_id).neq('status', 'paid')
   } else if (state === 'failed') {
     await admin.from('installments').update({
       status: 'due_soon',
-      method: 'Mobile Money',
+      method,
     }).eq('id', attempt.installment_id).eq('status', 'pending')
   }
 
@@ -175,10 +235,10 @@ export async function verifyMobileMoneySignature(rawBody: string, signature: str
 }
 
 async function findAttempt(admin: ReturnType<typeof createAdminClient>, providerId: string) {
-  const byProvider = await admin.from('payment_attempts').select('id, installment_id, status').eq('provider_id', providerId).maybeSingle()
+  const byProvider = await admin.from('payment_attempts').select('id, installment_id, status, method').eq('provider_id', providerId).maybeSingle()
   if (!byProvider.error && byProvider.data) return byProvider.data
 
-  const byNote = await admin.from('payment_attempts').select('id, installment_id, status').eq('note', providerMarker(providerId)).maybeSingle()
+  const byNote = await admin.from('payment_attempts').select('id, installment_id, status, method').eq('note', providerMarker(providerId)).maybeSingle()
   return byNote.data
 }
 
@@ -197,6 +257,20 @@ async function readJson(response: Response) {
     return await response.json() as Purchase
   } catch {
     return null
+  }
+}
+
+function trustedCheckoutUrl(value: string | undefined) {
+  if (!value) return ''
+  try {
+    const target = new URL(value)
+    const allowed = new Set(['payments.paytota.com', 'gate.paytota.com'])
+    const base = process.env.PAYTOTA_BASE_URL
+    if (base) allowed.add(new URL(base).host)
+    if (target.protocol !== 'https:' || !allowed.has(target.host) || !target.pathname.includes('/p/')) return ''
+    return target.toString()
+  } catch {
+    return ''
   }
 }
 

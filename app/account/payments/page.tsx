@@ -19,8 +19,8 @@ export default async function PaymentsPage() {
         eyebrow="Payments"
         title="Payment plan"
         description={portal && due
-          ? `${portal.paymentSummary.paid} paid. Next ${due.amount}, ${due.due}.`
-          : 'No payment plan yet.'}
+          ? `${portal.paymentSummary.paid} paid. Pay the next ${due.amount} by Mobile Money or card.`
+          : 'Pay by Mobile Money or card.'}
       />
       <PaymentPlan
         rows={portal?.installments}

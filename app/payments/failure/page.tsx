@@ -6,9 +6,9 @@ export const metadata: Metadata = { title: 'Payment not completed | Mudogwaluyii
 export default function PaymentFailurePage() {
   return (
     <PaymentResult
-      eyebrow="Mobile Money"
-      title="Not paid."
-      text="Try again."
+      eyebrow="Payment"
+      title="Not paid"
+      text="The payment was not completed. Open your payments and try again."
     />
   )
 }

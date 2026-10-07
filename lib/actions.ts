@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { employmentTypes, jobSlug, jobStatuses, type JobStatus } from '@/lib/careers'
 import { documentStatuses } from '@/lib/documents'
 import { formatUgx, installmentStatuses, receiptStatuses, requestStatuses, todayInKampala } from '@/lib/format'
-import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestMobileMoneyPrompt } from '@/lib/mobile-money'
+import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestCardCheckout, requestMobileMoneyPrompt } from '@/lib/mobile-money'
 import { signReceipt } from '@/lib/receipts'
 import { payoutLedgerStatus, readPaytotaPayout, sendPaytotaPayout } from '@/lib/paytota-payout'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
@@ -141,6 +141,145 @@ export async function startMobileMoneyPayment(input: { reference: string; phone:
   revalidatePath('/account/payments')
   revalidatePath('/admin/payments')
   return { state: 'pending' as const }
+}
+
+export async function startCardPayment(input: { reference: string }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to pay.' }
+
+  const { data: installment, error: lookupError } = await supabase
+    .from('installments')
+    .select('id, amount, name, status, reference, service_id')
+    .eq('reference', input.reference)
+    .maybeSingle()
+  if (lookupError || !installment) return { error: 'Not found.' }
+  if (installment.status === 'paid') return { error: 'Already paid.' }
+  if (installment.status === 'pending') return { error: 'A payment is already in progress.' }
+  if (!installment.amount || installment.amount <= 0) return { error: 'Cannot pay this.' }
+
+  const { data: service } = await supabase.from('services').select('title, customer_id').eq('id', installment.service_id).maybeSingle()
+  const { data: customer } = service
+    ? await supabase.from('customers').select('email, full_name, phone, location').eq('id', service.customer_id).maybeSingle()
+    : { data: null }
+
+  const email = customer?.email || user.email || ''
+  if (!paymentEmailPattern.test(email)) return { error: 'Add an email to your profile before paying by card.' }
+  const phone = normalizeMobileNumber(customer?.phone || user.phone || '')?.phone || ''
+  const started = await requestCardCheckout({
+    amount: Number(installment.amount),
+    email,
+    name: customer?.full_name || 'Customer',
+    phone,
+    city: customer?.location || 'Kampala',
+    description: installment.name || service?.title || 'Installment',
+    reference: `${installment.reference}-${Date.now()}`,
+    returnReference: installment.reference,
+  })
+  if ('error' in started || !started.checkoutUrl) return { error: 'error' in started ? started.error : 'The card payment could not be started.' }
+
+  const admin = createAdminClient()
+  await admin.from('installments').update({ status: 'pending', method: 'Card' }).eq('id', installment.id).neq('status', 'paid')
+  const inserted = await admin.from('payment_attempts').insert({
+    installment_id: installment.id,
+    method: 'Card',
+    phone: '',
+    status: 'pending',
+    provider_id: started.id,
+    provider_status: 'created',
+    note: 'Confirm the payment with your bank.',
+  })
+  if (inserted.error) {
+    await admin.from('payment_attempts').insert({
+      installment_id: installment.id,
+      method: 'Card',
+      phone: '',
+      status: 'pending',
+      note: providerMarker(started.id),
+    })
+  }
+
+  revalidatePath('/account/payments')
+  revalidatePath('/admin/payments')
+  return { checkoutUrl: started.checkoutUrl }
+}
+
+export async function startAccountAmountPayment(input: { method: 'mobile' | 'card'; amount: string; phone: string }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to pay.' }
+
+  const email = (user.email || '').trim().toLowerCase()
+  if (!paymentEmailPattern.test(email)) return { error: 'Add an email to your profile before paying.' }
+  const amount = Number(input.amount.replace(/[^\d]/g, ''))
+  if (!Number.isSafeInteger(amount) || amount < 500 || amount > 50_000_000) return { error: 'Enter UGX 500 to 50,000,000.' }
+
+  const { data: profile } = await supabase.from('profiles').select('full_name, phone, location').eq('id', user.id).maybeSingle()
+  const admin = createAdminClient()
+  const account = await ensurePaymentAccount(admin, email, profile?.phone || input.phone || '')
+  if (!account.ok) return { error: account.error }
+
+  const reference = `MG-PAY-${randomBytes(4).toString('hex').toUpperCase()}`
+  const name = profile?.full_name || account.name
+
+  if (input.method === 'card') {
+    const phone = normalizeMobileNumber(input.phone || profile?.phone || '')?.phone || ''
+    const started = await requestCardCheckout({
+      amount,
+      email,
+      name,
+      phone,
+      city: profile?.location || 'Kampala',
+      description: 'Mudogwaluyiira payment',
+      reference,
+      returnReference: reference,
+    })
+    if ('error' in started || !started.checkoutUrl || !started.id) return { error: 'error' in started ? started.error : 'The card payment could not be started.' }
+    const { error } = await admin.from('mobile_payments').insert({
+      customer_id: account.customerId,
+      email,
+      phone: phone ? `+${phone}` : email,
+      amount,
+      method: 'Card',
+      status: 'pending',
+      reference,
+      provider_id: started.id,
+    })
+    if (error) return { error: 'Could not save.' }
+    revalidatePath('/account/payments')
+    revalidatePath('/admin/payments')
+    return { checkoutUrl: started.checkoutUrl, reference }
+  }
+
+  const number = normalizeMobileNumber(input.phone)
+  if (!number) return { error: 'Enter a phone number.' }
+  const { error } = await admin.from('mobile_payments').insert({
+    customer_id: account.customerId,
+    email,
+    phone: `+${number.phone}`,
+    amount,
+    method: 'Mobile Money',
+    status: 'pending',
+    reference,
+  })
+  if (error) return { error: 'Could not save.' }
+  const prompted = await requestMobileMoneyPrompt({
+    amount,
+    phone: number.phone,
+    network: number.network,
+    email,
+    name,
+    description: 'Mudogwaluyiira payment',
+    reference,
+  })
+  if (prompted.error || !prompted.id) {
+    await admin.from('mobile_payments').update({ status: 'failed' }).eq('reference', reference)
+    return { error: prompted.error || 'Could not start.' }
+  }
+  await admin.from('mobile_payments').update({ provider_id: prompted.id }).eq('reference', reference)
+  revalidatePath('/account/payments')
+  revalidatePath('/admin/payments')
+  return { state: 'pending' as const, reference }
 }
 
 export async function refreshMobileMoneyPayment(reference: string) {
