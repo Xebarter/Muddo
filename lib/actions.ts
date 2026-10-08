@@ -7,7 +7,6 @@ import { documentStatuses } from '@/lib/documents'
 import { formatUgx, installmentStatuses, receiptStatuses, requestStatuses, todayInKampala } from '@/lib/format'
 import { applyMobileMoneyUpdate, normalizeMobileNumber, providerMarker, readMobileMoneyPurchase, requestCardCheckout, requestMobileMoneyPrompt } from '@/lib/mobile-money'
 import { signReceipt } from '@/lib/receipts'
-import { payoutLedgerStatus, readPaytotaPayout, sendPaytotaPayout } from '@/lib/paytota-payout'
 import { suggestedNetwork, ugandaMobile } from '@/lib/payments/phone'
 import { businesses } from '@/lib/businesses'
 import { formatUgandaPhone } from '@/lib/contact'
@@ -1283,114 +1282,6 @@ export async function deleteMobilePayment(id: string) {
   if (data.status === 'paid') return { error: 'A completed payment cannot be deleted.' }
   const { error } = await supabase.from('mobile_payments').delete().eq('id', id).neq('status', 'paid')
   if (error) return { error: 'The receipt could not be deleted.' }
-  refreshPayments()
-  return {}
-}
-
-export async function sendDisbursement(formData: FormData) {
-  const { supabase, error: authError } = await requireAdmin()
-  if (authError) return { error: authError }
-
-  const customerId = String(formData.get('customer_id') ?? '')
-  const name = String(formData.get('recipient_name') ?? '').trim()
-  const email = String(formData.get('email') ?? '').trim().toLowerCase()
-  const channel = String(formData.get('channel') ?? '')
-  const amount = ledgerAmount(formData.get('amount'))
-  const description = String(formData.get('description') ?? '').trim()
-  const reference = ledgerReference('MG-OUT', String(formData.get('reference') ?? ''))
-  const phone = channel === 'mobile'
-    ? normalizeMobileNumber(String(formData.get('phone') ?? ''))?.phone ?? ''
-    : ugandaMobile(String(formData.get('phone') ?? ''))
-  const bankName = String(formData.get('bank_name') ?? '').trim()
-  const bankCode = String(formData.get('bank_code') ?? '').trim().toUpperCase()
-  const bankAccountName = String(formData.get('bank_account_name') ?? '').trim()
-  const bankAccountNumber = String(formData.get('bank_account_number') ?? '').replace(/\s/g, '')
-
-  if (name.length < 2 || name.length > 80) return { error: 'Enter the recipient name.' }
-  if (!paymentEmailPattern.test(email)) return { error: 'Enter a valid email.' }
-  if (!phone) return { error: channel === 'mobile' ? 'Enter an MTN or Airtel number.' : 'Enter a Uganda mobile number.' }
-  if (amount === null) return { error: 'Enter an amount in whole shillings.' }
-  if (description.length < 2 || description.length > 80) return { error: 'Enter a short description.' }
-  if (channel !== 'mobile' && channel !== 'bank') return { error: 'Choose Mobile Money or bank.' }
-  if (!reference) return { error: 'Use letters, numbers and hyphens for the reference.' }
-  if (channel === 'bank') {
-    if (bankName.length < 2 || bankName.length > 80) return { error: 'Enter the bank name.' }
-    if (!/^[A-Z0-9]{3,20}$/.test(bankCode)) return { error: 'Enter the bank code.' }
-    if (bankAccountName.length < 2 || bankAccountName.length > 80) return { error: 'Enter the account name.' }
-    if (!/^\d{6,20}$/.test(bankAccountNumber)) return { error: 'Enter the account number.' }
-  }
-
-  const record = {
-    customer_id: customerId || null,
-    recipient_name: name,
-    email,
-    phone,
-    amount,
-    channel,
-    description,
-    reference,
-    status: 'pending',
-    bank_name: channel === 'bank' ? bankName : '',
-    bank_code: channel === 'bank' ? bankCode : '',
-    bank_account_name: channel === 'bank' ? bankAccountName : '',
-    bank_account_number: channel === 'bank' ? bankAccountNumber : '',
-  }
-
-  const { data: inserted, error: insertError } = await supabase.from('disbursements').insert(record).select('id').single()
-  if (insertError || !inserted) {
-    if (insertError?.code === 'PGRST205' || insertError?.code === '42P01') {
-      return { error: 'Run supabase/0009disbursements.sql in the Supabase SQL editor, then try again.' }
-    }
-    return { error: paymentError(insertError, 'The disbursement could not be saved.') }
-  }
-
-  const sent = await sendPaytotaPayout({
-    email,
-    phone,
-    name,
-    amount,
-    description,
-    reference,
-    channel,
-    bankName,
-    bankCode,
-    bankAccountName,
-    bankAccountNumber,
-  })
-
-  await supabase.from('disbursements').update({
-    provider_id: sent.providerId ?? null,
-    status: sent.status,
-    provider_message: sent.error || sent.message || '',
-  }).eq('id', inserted.id)
-
-  refreshPayments()
-  if (sent.error) return { error: sent.error }
-  return {}
-}
-
-export async function refreshDisbursement(id: string) {
-  const { supabase, error: authError } = await requireAdmin()
-  if (authError) return { error: authError }
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return { error: 'That disbursement could not be found.' }
-
-  const { data, error } = await supabase.from('disbursements').select('provider_id, status').eq('id', id).maybeSingle()
-  if (error?.code === 'PGRST205' || error?.code === '42P01') {
-    return { error: 'Run supabase/0009disbursements.sql in the Supabase SQL editor, then try again.' }
-  }
-  if (error || !data) return { error: 'That disbursement could not be found.' }
-  if (!data.provider_id) return { error: 'This payout has no Paytota reference yet.' }
-
-  const payout = await readPaytotaPayout(data.provider_id)
-  if (!payout) return { error: 'Paytota did not return a status.' }
-
-  const status = payoutLedgerStatus(payout.status, payout.event_type)
-  const detail = payout.details?.message || (typeof payout.error === 'object' ? payout.error?.message : '') || ''
-  const { error: updateError } = await supabase.from('disbursements').update({
-    status: data.status === 'paid' && status !== 'paid' ? 'paid' : status,
-    ...(detail ? { provider_message: detail.slice(0, 180) } : {}),
-  }).eq('id', id)
-  if (updateError) return { error: 'The status could not be saved.' }
   refreshPayments()
   return {}
 }

@@ -666,30 +666,9 @@ export type LedgerReceipt = {
   createdOn: string
 }
 
-export type LedgerDisbursement = {
-  id: string
-  customerId: string
-  recipientName: string
-  email: string
-  phone: string
-  amount: number
-  channel: 'mobile' | 'bank'
-  description: string
-  reference: string
-  status: 'pending' | 'paid' | 'failed'
-  bankName: string
-  bankCode: string
-  bankAccountName: string
-  bankAccountNumber: string
-  providerMessage: string
-  createdOn: string
-}
-
 export type PaymentLedgerData = {
   installments: LedgerInstallment[]
   receipts: LedgerReceipt[]
-  disbursements: LedgerDisbursement[]
-  disbursementsReady: boolean
   services: { id: string; label: string }[]
   customers: { id: string; name: string; email: string; phone: string }[]
   collected: number
@@ -704,16 +683,13 @@ export const getPaymentLedger = cache(async (): Promise<PaymentLedgerData | null
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || user.app_metadata?.role !== 'admin') return null
 
-  const [installments, receipts, services, customers, disbursements] = await Promise.all([
+  const [installments, receipts, services, customers] = await Promise.all([
     supabase.from('installments').select('id, service_id, name, amount, due_on, paid_on, method, status, reference'),
     supabase.from('mobile_payments').select('id, customer_id, email, phone, amount, method, status, reference, created_at').order('created_at', { ascending: false }),
     supabase.from('services').select('id, reference, title, customer_id').order('reference'),
     supabase.from('customers').select('id, full_name, email, phone').order('full_name'),
-    supabase.from('disbursements').select('id, customer_id, recipient_name, email, phone, amount, channel, description, reference, status, bank_name, bank_code, bank_account_name, bank_account_number, provider_message, created_at').order('created_at', { ascending: false }),
   ])
   if (installments.error || receipts.error || services.error || customers.error) return null
-  const disbursementsMissing = Boolean(disbursements.error && (disbursements.error.code === 'PGRST205' || disbursements.error.code === '42P01' || /disbursements/i.test(disbursements.error.message || '')))
-  if (disbursements.error && !disbursementsMissing) return null
 
   const customerRows = customers.data ?? []
   const customerName = new Map(customerRows.map((item) => [item.id, item.full_name]))
@@ -756,29 +732,6 @@ export const getPaymentLedger = cache(async (): Promise<PaymentLedgerData | null
     }
   })
 
-  const ledgerDisbursements = disbursementsMissing ? [] : (disbursements.data ?? []).map((item) => {
-    const status = receiptStatusList.includes(item.status as (typeof receiptStatusList)[number]) ? item.status as LedgerDisbursement['status'] : 'pending'
-    const channel = item.channel === 'bank' ? 'bank' as const : 'mobile' as const
-    return {
-      id: item.id,
-      customerId: item.customer_id ?? '',
-      recipientName: item.recipient_name,
-      email: item.email,
-      phone: item.phone,
-      amount: Number(item.amount),
-      channel,
-      description: item.description,
-      reference: item.reference,
-      status,
-      bankName: item.bank_name,
-      bankCode: item.bank_code,
-      bankAccountName: item.bank_account_name,
-      bankAccountNumber: item.bank_account_number,
-      providerMessage: item.provider_message,
-      createdOn: item.created_at,
-    }
-  })
-
   const collected = ledgerInstallments.filter((item) => item.status === 'paid').reduce((sum, item) => sum + item.amount, 0)
     + ledgerReceipts.filter((item) => item.status === 'paid').reduce((sum, item) => sum + item.amount, 0)
   const outstanding = ledgerInstallments.filter((item) => item.status !== 'paid').reduce((sum, item) => sum + item.amount, 0)
@@ -787,8 +740,6 @@ export const getPaymentLedger = cache(async (): Promise<PaymentLedgerData | null
   return {
     installments: ledgerInstallments,
     receipts: ledgerReceipts,
-    disbursements: ledgerDisbursements,
-    disbursementsReady: !disbursementsMissing,
     services: serviceRows.map((item) => ({
       id: item.id,
       label: `${item.reference} · ${item.title} · ${customerName.get(item.customer_id) ?? 'Customer'}`,

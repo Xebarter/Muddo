@@ -141,7 +141,7 @@ export async function requestCardCheckout(input: {
       success_redirect: receiptReference
         ? `${site}/payments/success?reference=${encodeURIComponent(receiptReference)}`
         : (process.env.PAYTOTA_SUCCESS_REDIRECT || `${site}/payments/success`),
-      failure_redirect: process.env.PAYTOTA_FAILURE_REDIRECT || `${site}/payments/failure`,
+      failure_redirect: failureRedirect(site, receiptReference),
       cancel_redirect: process.env.PAYTOTA_CANCEL_REDIRECT || `${site}/payments/cancel`,
       success_callback: `${site}${process.env.PAYTOTA_WEBHOOK_PATH || '/api/paytota/webhook'}`,
     }),
@@ -258,6 +258,58 @@ async function readJson(response: Response) {
   } catch {
     return null
   }
+}
+
+function failureRedirect(site: string, reference: string) {
+  const base = process.env.PAYTOTA_FAILURE_REDIRECT || `${site}/payments/failure`
+  try {
+    const url = new URL(base)
+    if (reference) url.searchParams.set('reference', reference)
+    return url.toString()
+  } catch {
+    return base
+  }
+}
+
+export async function cardFailureMessage(reference: string) {
+  if (!/^[A-Za-z0-9-]{4,40}$/.test(reference)) return ''
+  const admin = createAdminClient()
+  const payment = await admin.from('mobile_payments').select('provider_id').eq('reference', reference).maybeSingle()
+  let providerId = payment.data?.provider_id || ''
+  if (!providerId) {
+    const installment = await admin.from('installments').select('id').eq('reference', reference).maybeSingle()
+    if (installment.data?.id) {
+      const attempt = await admin.from('payment_attempts').select('provider_id').eq('installment_id', installment.data.id).eq('method', 'Card').order('created_at', { ascending: false }).limit(1).maybeSingle()
+      providerId = attempt.data?.provider_id || ''
+    }
+  }
+  if (!providerId) return ''
+
+  const purchase = await readCardPurchase(providerId)
+  if (!purchase) return ''
+  if ((purchase.status || '').toLowerCase() === 'error') {
+    await applyMobileMoneyUpdate({ id: providerId, status: 'error', reference: purchase.reference })
+  }
+  const code = purchase.transaction_data?.attempts?.find((item) => item.error?.code)?.error?.code || ''
+  if (code === 'no_matching_terminal') return 'This card was not charged. Card payments are not switched on for this account yet. Use Mobile Money for now.'
+  if (code) return 'This card was not charged. Check the card details, or pay with Mobile Money.'
+  return ''
+}
+
+async function readCardPurchase(id: string) {
+  const base = (process.env.PAYTOTA_BASE_URL || '').replace(/\/$/, '')
+  const secret = process.env.PAYTOTA_SECRET_KEY
+  if (!base || !secret) return null
+  const response = await fetch(`${base}/api/v1/purchases/${id}/`, {
+    headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+    cache: 'no-store',
+  })
+  if (!response.ok) return null
+  return response.json() as Promise<{
+    status?: string
+    reference?: string
+    transaction_data?: { attempts?: { error?: { code?: string; message?: string } }[] }
+  }>
 }
 
 function trustedCheckoutUrl(value: string | undefined) {

@@ -10,7 +10,7 @@ export default async function PaymentsPage() {
       <AdminPageHeader
         eyebrow="Finance"
         title="Payments"
-        description="See what is still owed, what has been collected, and what has been paid out."
+        description="See what is still owed and what has been collected."
       />
       <PaymentDesk ledger={ledger} />
     </>
